@@ -216,15 +216,21 @@ def render_catalog_page():
 
                 option_config = get_option_config(row['product_type'])
                 option_value = ''
+
                 if option_config['options']:
+                    options = option_config['options']
                     default_index = 0
-                    string_options = [str(x) for x in option_config['options']]
-                    if row['product_type'] == 'bowling_ball' and '15' in string_options:
-                        default_index = string_options.index('15')
+
+                    if row['product_type'] == 'bowling_ball':
+                        for i, opt in enumerate(options):
+                            digits = ''.join(ch for ch in str(opt) if ch.isdigit())
+                            if digits == '15':
+                                default_index = i
+                                break
 
                     option_value = st.selectbox(
                         option_config['option_type'],
-                        option_config['options'],
+                        options,
                         index=default_index,
                         key=f"opt_{row_key}"
                     )
