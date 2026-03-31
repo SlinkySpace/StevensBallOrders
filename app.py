@@ -23,6 +23,7 @@ from db import (
     get_pending_ball_orders_count,
     init_db,
     place_order_items,
+    save_cart,
     update_all_orders_status,
     update_balance,
     update_order_status,
@@ -52,14 +53,23 @@ def ensure_cart():
         st.session_state['cart'] = []
 
 
+def persist_cart():
+    ensure_cart()
+    user = get_current_user()
+    if user:
+        save_cart(int(user['id']), st.session_state['cart'])
+
+
 def add_to_cart(item: dict):
     ensure_cart()
     st.session_state['cart'].append(item)
+    persist_cart()
 
 
 def remove_cart_index(index: int):
     ensure_cart()
     st.session_state['cart'].pop(index)
+    persist_cart()
 
 
 def ensure_catalog_page_valid(total_pages: int) -> int:
@@ -208,8 +218,9 @@ def render_catalog_page():
                 option_value = ''
                 if option_config['options']:
                     default_index = 0
-                    if row['product_type'] == 'bowling_ball' and '15' in [str(x) for x in option_config['options']]:
-                        default_index = [str(x) for x in option_config['options']].index('15')
+                    string_options = [str(x) for x in option_config['options']]
+                    if row['product_type'] == 'bowling_ball' and '15' in string_options:
+                        default_index = string_options.index('15')
 
                     option_value = st.selectbox(
                         option_config['option_type'],
@@ -273,6 +284,8 @@ def render_cart_page():
 
     total = 0.0
     remove_index = None
+    cart_changed = False
+
     for idx, item in enumerate(st.session_state['cart']):
         with st.container(border=True):
             left, right = st.columns([1, 2])
@@ -289,23 +302,41 @@ def render_cart_page():
 
                 st.write(f"Unit price: {currency(item['unit_price'])}")
 
+                old_qty = int(item.get('quantity', 1))
                 qty = st.number_input(
-                    f"Quantity #{idx+1}", min_value=1, max_value=20,
-                    value=int(item.get('quantity', 1)), key=f"cart_qty_{idx}"
+                    f"Quantity #{idx+1}",
+                    min_value=1,
+                    max_value=20,
+                    value=old_qty,
+                    key=f"cart_qty_{idx}"
                 )
                 item['quantity'] = int(qty)
+                if int(qty) != old_qty:
+                    cart_changed = True
 
                 if item.get('option_type'):
                     options = get_option_config(item.get('product_type', 'general'))['options']
                     current = item.get('option_value', options[0] if options else '')
                     if current not in options and options:
                         options = [current] + options
-                    item['option_value'] = st.selectbox(
-                        item['option_type'], options, index=options.index(current) if options else 0,
+
+                    selected = st.selectbox(
+                        item['option_type'],
+                        options,
+                        index=options.index(current) if options else 0,
                         key=f"cart_opt_{idx}"
                     ) if options else current
 
-                item['note'] = st.text_input('Item note', value=item.get('note', ''), key=f"cart_note_{idx}")
+                    if selected != item.get('option_value'):
+                        item['option_value'] = selected
+                        cart_changed = True
+
+                old_note = item.get('note', '')
+                new_note = st.text_input('Item note', value=old_note, key=f"cart_note_{idx}")
+                if new_note != old_note:
+                    item['note'] = new_note
+                    cart_changed = True
+
                 if st.button('Remove item', key=f"remove_{idx}"):
                     remove_index = idx
 
@@ -316,6 +347,9 @@ def render_cart_page():
     if remove_index is not None:
         remove_cart_index(remove_index)
         st.rerun()
+
+    if cart_changed:
+        persist_cart()
 
     st.metric('Cart total', currency(total))
 

@@ -1,7 +1,7 @@
 import streamlit as st
 
 from config import OWNER_EMAILS
-from db import create_user, get_user_by_email
+from db import create_user, get_saved_cart, get_user_by_email
 
 
 SESSION_DEFAULTS = {
@@ -23,6 +23,7 @@ def login_user(email: str) -> bool:
         return False
     st.session_state['user_email'] = user['email']
     st.session_state['user'] = dict(user)
+    st.session_state['cart'] = get_saved_cart(int(user['id']))
     return True
 
 

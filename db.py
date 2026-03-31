@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -46,6 +47,13 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE TABLE IF NOT EXISTS app_state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS saved_carts (
+    user_id INTEGER PRIMARY KEY,
+    cart_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id)
 );
 """
 
@@ -103,6 +111,43 @@ def update_balance(user_id: int, new_balance: float) -> None:
         conn.execute("UPDATE users SET balance_owed = ? WHERE id = ?", (round(float(new_balance), 2), user_id))
 
 
+def get_saved_cart(user_id: int) -> list[dict]:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT cart_json FROM saved_carts WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+
+    if not row:
+        return []
+
+    try:
+        parsed = json.loads(row["cart_json"])
+        return parsed if isinstance(parsed, list) else []
+    except Exception:
+        return []
+
+
+def save_cart(user_id: int, cart_items: list[dict]) -> None:
+    cart_json = json.dumps(cart_items)
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO saved_carts(user_id, cart_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                cart_json = excluded.cart_json,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, cart_json, now_iso()),
+        )
+
+
+def clear_saved_cart(user_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM saved_carts WHERE user_id = ?", (user_id,))
+
+
 def place_order_items(user: dict, cart_items: list[dict], checkout_note: str = '') -> None:
     total_to_add = 0.0
     with get_conn() as conn:
@@ -154,6 +199,7 @@ def place_order_items(user: dict, cart_items: list[dict], checkout_note: str = '
             (round(total_to_add, 2), user['id']),
         )
 
+    clear_saved_cart(int(user["id"]))
     evaluate_ball_batch_notification()
 
 
@@ -225,7 +271,6 @@ def update_all_orders_status(order_ids: Iterable[int], new_status: str) -> None:
     evaluate_ball_batch_notification()
 
 
-
 def delete_order(order_id: int) -> None:
     with get_conn() as conn:
         row = conn.execute("SELECT user_id, total_price FROM orders WHERE id = ?", (order_id,)).fetchone()
@@ -239,6 +284,7 @@ def delete_order(order_id: int) -> None:
             (total_price, total_price, user_id),
         )
     evaluate_ball_batch_notification()
+
 
 def get_all_users():
     with get_conn() as conn:
