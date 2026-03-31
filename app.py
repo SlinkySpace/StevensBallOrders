@@ -99,6 +99,7 @@ def render_auth_page():
             submitted = st.form_submit_button('Login')
             if submitted:
                 if login_user(email):
+                    st.session_state['catalog_page_number'] = 1
                     st.success('Logged in successfully.')
                     st.rerun()
                 else:
@@ -115,11 +116,11 @@ def render_auth_page():
                 if not first_name or not last_name or not email:
                     st.error('Please complete all fields.')
                 elif signup_user(first_name, last_name, email):
+                    st.session_state['catalog_page_number'] = 1
                     st.success('Account created.')
                     st.rerun()
                 else:
                     st.error('An account with that email already exists.')
-
 
 
 def render_sidebar():
@@ -131,6 +132,7 @@ def render_sidebar():
     cart_count = sum(int(item.get('quantity', 1)) for item in st.session_state.get('cart', []))
     st.sidebar.metric('Cart items', cart_count)
     if st.sidebar.button('Logout'):
+        st.session_state['catalog_page_number'] = 1
         logout_user()
         st.rerun()
 
@@ -194,15 +196,25 @@ def render_catalog_page():
                 st.subheader(str(row['name']))
                 st.write(f"**Price:** {currency(float(row['price_value']))}")
                 st.write(f"**SKU:** {str(row['sku']) or 'N/A'}")
+
+                scent = str(row.get('scent', '') or '').strip()
+                if row.get('product_type') == 'bowling_ball' and scent and scent.lower() != 'none':
+                    st.write(f"**Scent:** {scent}")
+
                 if str(row.get('product_url', '')).strip():
                     st.markdown(f"[Open Storm product page]({row['product_url']})")
 
                 option_config = get_option_config(row['product_type'])
                 option_value = ''
                 if option_config['options']:
+                    default_index = 0
+                    if row['product_type'] == 'bowling_ball' and '15' in [str(x) for x in option_config['options']]:
+                        default_index = [str(x) for x in option_config['options']].index('15')
+
                     option_value = st.selectbox(
                         option_config['option_type'],
                         option_config['options'],
+                        index=default_index,
                         key=f"opt_{row_key}"
                     )
 
@@ -233,6 +245,7 @@ def render_catalog_page():
                         'main_category': str(row['main_category']),
                         'sub_category': str(row['sub_category']),
                         'product_type': str(row['product_type']),
+                        'scent': scent if row.get('product_type') == 'bowling_ball' else '',
                     })
                     st.success('Added to cart.')
 
@@ -269,6 +282,11 @@ def render_cart_page():
             with right:
                 st.write(f"**{item['name']}**")
                 st.write(f"SKU: {item['sku'] or 'N/A'}")
+
+                scent = str(item.get('scent', '') or '').strip()
+                if item.get('product_type') == 'bowling_ball' and scent and scent.lower() != 'none':
+                    st.write(f"Scent: {scent}")
+
                 st.write(f"Unit price: {currency(item['unit_price'])}")
 
                 qty = st.number_input(

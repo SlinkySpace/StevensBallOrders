@@ -26,6 +26,10 @@ def load_catalog() -> pd.DataFrame:
     df['main_category'] = df['main_category'].fillna('Unknown').astype(str).str.strip()
     df['sub_category'] = df['sub_category'].fillna('Unknown').astype(str).str.strip()
 
+    if 'scent' not in df.columns:
+        df['scent'] = ''
+    df['scent'] = df['scent'].fillna('').astype(str).replace('nan', '').str.strip()
+
     df['price'] = df['price'].astype(str).str.strip()
     df = df[df['price'].str.upper() != 'OUT_OF_STOCK'].copy()
     df['price_value'] = pd.to_numeric(df['price'].replace('[^0-9.]', '', regex=True), errors='coerce')
