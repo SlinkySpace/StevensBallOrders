@@ -343,9 +343,17 @@ def _set_app_state(key: str, value: str) -> None:
 
 def evaluate_ball_batch_notification() -> None:
     current_count = get_pending_ball_orders_count()
-    last_notified = int(_get_app_state('last_ball_batch_notified_count', '0') or 0)
-    if current_count >= BALL_BATCH_THRESHOLD and current_count != last_notified:
-        maybe_send_ball_batch_email(current_count)
-        _set_app_state('last_ball_batch_notified_count', str(current_count))
-    elif current_count < BALL_BATCH_THRESHOLD and last_notified != 0:
-        _set_app_state('last_ball_batch_notified_count', '0')
+
+    # 0 = below threshold / not yet notified for current batch cycle
+    # 1 = already notified for the current above-threshold batch cycle
+    already_notified_for_cycle = _get_app_state('ball_batch_notified_for_cycle', '0') == '1'
+
+    if current_count >= BALL_BATCH_THRESHOLD:
+        if not already_notified_for_cycle:
+            maybe_send_ball_batch_email(current_count)
+            _set_app_state('ball_batch_notified_for_cycle', '1')
+    else:
+        # Reset once ball count drops below threshold,
+        # so the next crossing back above threshold sends again.
+        if already_notified_for_cycle:
+            _set_app_state('ball_batch_notified_for_cycle', '0')
