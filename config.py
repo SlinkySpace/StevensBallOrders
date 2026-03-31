@@ -8,10 +8,10 @@ APP_TITLE = 'Team Bowling Order Dashboard'
 BALL_BATCH_THRESHOLD = 4
 BALL_PENDING_STATUSES = ('submitted', 'approved')
 EMAIL_NOTIFICATIONS_ENABLED = True
-SMTP_HOST = 'smtp.gmail.com'
-SMTP_PORT = 587
-SMTP_USERNAME = 'slinkyspace5@gmail.com'
-SMTP_PASSWORD = 'noujfyufhbgfqmqo'
+SMTP_USERNAME = st.secrets["SMTP_USERNAME"]
+SMTP_PASSWORD = st.secrets["SMTP_PASSWORD"]
+SMTP_HOST = st.secrets["SMTP_HOST"]
+SMTP_PORT = st.secrets["SMTP_PORT"]
 SMTP_USE_TLS = True
 
 BALL_WEIGHTS = ['12 lb', '13 lb', '14 lb', '15 lb', '16 lb']
