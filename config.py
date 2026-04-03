@@ -31,6 +31,7 @@ OWNER_EMAILS = tuple(st.secrets.get(
         'cfolgore@stevens.edu',
         'msantos2@stevens.edu',
         'jwang12@stevens.edu',
+        'mderosa@stevens.edu',
     ]
 ))
 
