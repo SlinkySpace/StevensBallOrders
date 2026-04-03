@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
 
@@ -41,6 +43,25 @@ CATALOG_ITEMS_PER_PAGE = 25
 
 def currency(value: float) -> str:
     return f"${value:,.2f}"
+
+
+def safe_show_image(image_value: str):
+    image_value = str(image_value or "").strip()
+    if not image_value:
+        return
+
+    try:
+        if image_value.startswith(('http://', 'https://')):
+            st.image(image_value, use_container_width=True)
+            return
+
+        image_path = Path(image_value)
+        if image_path.exists():
+            st.image(str(image_path), use_container_width=True)
+        else:
+            st.caption('Image unavailable')
+    except Exception:
+        st.caption('Image unavailable')
 
 
 @st.cache_data(show_spinner=False)
@@ -200,8 +221,7 @@ def render_catalog_page():
         with st.container(border=True):
             left, right = st.columns([1, 2])
             with left:
-                if row['image_url']:
-                    st.image(row['image_url'], use_container_width=True)
+                safe_show_image(row.get('image_url'))
             with right:
                 st.subheader(str(row['name']))
                 st.write(f"**Price:** {currency(float(row['price_value']))}")
@@ -296,8 +316,7 @@ def render_cart_page():
         with st.container(border=True):
             left, right = st.columns([1, 2])
             with left:
-                if item.get('image_url'):
-                    st.image(item['image_url'], use_container_width=True)
+                safe_show_image(item.get('image_url'))
             with right:
                 st.write(f"**{item['name']}**")
                 st.write(f"SKU: {item['sku'] or 'N/A'}")
@@ -485,8 +504,7 @@ def render_owner_dashboard():
         with st.container(border=True):
             left, mid, right = st.columns([1, 2, 1])
             with left:
-                if row['image_url']:
-                    st.image(row['image_url'], use_container_width=True)
+                safe_show_image(row.get('image_url'))
             with mid:
                 st.write(f"**{row['product_name']}**")
                 st.write(f"Customer: {row['customer_first_name']} {row['customer_last_name']} ({row['customer_email']})")
