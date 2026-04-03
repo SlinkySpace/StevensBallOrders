@@ -5,8 +5,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
-import streamlit as st
-
 from config import DATABASE_URL, DB_PATH, BALL_BATCH_THRESHOLD, BALL_PENDING_STATUSES
 from email_utils import maybe_send_ball_batch_email, send_order_status_email
 
@@ -125,22 +123,24 @@ def _dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
-if USE_POSTGRES:
-    @st.cache_resource(show_spinner=False)
-    def get_postgres_connection():
-        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
-
-
 @contextmanager
 def get_conn():
     if USE_POSTGRES:
-        conn = get_postgres_connection()
+        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
         try:
             yield conn
             conn.commit()
         except Exception:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             raise
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
     else:
         Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(DB_PATH)
@@ -329,7 +329,6 @@ def get_orders_for_user(user_id: int, statuses: Optional[Iterable[str]] = None):
     if statuses:
         statuses = list(statuses)
         query += f" AND status IN ({_placeholders(len(statuses))})"
-
         params.extend(statuses)
 
     query += " ORDER BY timestamp DESC, id DESC"
