@@ -3,10 +3,7 @@ import streamlit as st
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Local SQLite fallback
 DB_PATH = BASE_DIR / 'bowling_orders.db'
-
-# Hosted database option (Neon / Supabase Postgres)
 DATABASE_URL = st.secrets.get("DATABASE_URL", "").strip()
 
 CATALOG_CSV = BASE_DIR / 'storm_products_tagged.csv'

@@ -45,28 +45,32 @@ def currency(value: float) -> str:
     return f"${value:,.2f}"
 
 
+@st.cache_data(show_spinner=False)
+def get_catalog_df():
+    return load_catalog()
+
+
+def clear_cached_views():
+    st.cache_data.clear()
+
+
 def safe_show_image(image_value: str):
     image_value = str(image_value or "").strip()
     if not image_value:
         return
 
     try:
-        if image_value.startswith(('http://', 'https://')):
+        if image_value.startswith(("http://", "https://")):
             st.image(image_value, use_container_width=True)
             return
 
         image_path = Path(image_value)
-        if image_path.exists():
+        if image_path.exists() and image_path.is_file():
             st.image(str(image_path), use_container_width=True)
         else:
-            st.caption('Image unavailable')
+            st.caption("Image unavailable")
     except Exception:
-        st.caption('Image unavailable')
-
-
-@st.cache_data(show_spinner=False)
-def get_catalog_df():
-    return load_catalog()
+        st.caption("Image unavailable")
 
 
 def ensure_cart():
@@ -107,6 +111,7 @@ def confirm_delete_dialog(order_id: int, product_name: str):
     with c1:
         if st.button('Yes, delete order', type='primary', key=f'dialog_confirm_delete_{order_id}'):
             delete_order(order_id)
+            clear_cached_views()
             st.session_state.pop('delete_target_order_id', None)
             st.session_state.pop('delete_target_product_name', None)
             st.success('Order deleted.')
@@ -148,6 +153,7 @@ def render_auth_page():
                     st.error('Please complete all fields.')
                 elif signup_user(first_name, last_name, email):
                     st.session_state['catalog_page_number'] = 1
+                    clear_cached_views()
                     st.success('Account created.')
                     st.rerun()
                 else:
@@ -221,7 +227,7 @@ def render_catalog_page():
         with st.container(border=True):
             left, right = st.columns([1, 2])
             with left:
-                safe_show_image(row.get('image_url'))
+                safe_show_image(row.get('image_url', ''))
             with right:
                 st.subheader(str(row['name']))
                 st.write(f"**Price:** {currency(float(row['price_value']))}")
@@ -273,8 +279,8 @@ def render_catalog_page():
                         'name': str(row['name']),
                         'sku': str(row['sku']),
                         'unit_price': float(row['price_value']),
-                        'image_url': str(row['image_url']),
-                        'product_url': str(row['product_url']),
+                        'image_url': str(row.get('image_url', '')),
+                        'product_url': str(row.get('product_url', '')),
                         'option_type': option_config['option_type'],
                         'option_value': option_value,
                         'quantity': int(quantity),
@@ -316,7 +322,7 @@ def render_cart_page():
         with st.container(border=True):
             left, right = st.columns([1, 2])
             with left:
-                safe_show_image(item.get('image_url'))
+                safe_show_image(item.get('image_url', ''))
             with right:
                 st.write(f"**{item['name']}**")
                 st.write(f"SKU: {item['sku'] or 'N/A'}")
@@ -407,6 +413,7 @@ def render_checkout_page():
         place_order_items(user, st.session_state['cart'], checkout_note)
         st.session_state['cart'] = []
         refresh_user_session()
+        clear_cached_views()
         st.success('Order submitted successfully.')
         st.rerun()
 
@@ -429,6 +436,7 @@ def render_profile_page():
     if st.button('Update saved card placeholder'):
         update_saved_card(user['id'], saved_card)
         refresh_user_session()
+        clear_cached_views()
         st.success('Saved card field updated.')
         st.rerun()
 
@@ -461,14 +469,36 @@ def render_order_history_page():
     st.dataframe(df, use_container_width=True)
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_pending_ball_count():
+    return get_pending_ball_orders_count()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_grouped_balls():
+    return get_grouped_pending_ball_orders()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_filtered_orders(selected_statuses_tuple):
+    statuses = list(selected_statuses_tuple) if selected_statuses_tuple else None
+    return get_all_orders(statuses)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_all_users():
+    return get_all_users()
+
+
 def render_owner_dashboard():
     st.header('Owner Dashboard')
-    pending_ball_count = get_pending_ball_orders_count()
-    grouped_balls = get_grouped_pending_ball_orders()
+    pending_ball_count = cached_pending_ball_count()
+    grouped_balls = cached_grouped_balls()
 
     c1, c2 = st.columns(2)
+    filtered_pending_orders = cached_filtered_orders(tuple(['submitted', 'approved', 'ordered']))
     c1.metric('Pending bowling balls', pending_ball_count)
-    c2.metric('Pending orders', len(get_all_orders(['submitted', 'approved', 'ordered'])))
+    c2.metric('Pending orders', len(filtered_pending_orders))
 
     st.subheader('Pending bowling ball summary')
     if grouped_balls:
@@ -488,13 +518,15 @@ def render_owner_dashboard():
     with filter_col2:
         bulk_status = st.selectbox('Bulk update filtered orders to', ORDER_STATUS_OPTIONS)
 
-    all_filtered_rows = get_all_orders(selected_statuses if selected_statuses else None)
+    status_key = tuple(selected_statuses) if selected_statuses else tuple()
+    all_filtered_rows = cached_filtered_orders(status_key)
     st.caption(f'{len(all_filtered_rows)} orders shown')
 
     if all_filtered_rows:
         if st.button('Apply bulk status to all shown orders', type='primary'):
             order_ids = [int(row['id']) for row in all_filtered_rows]
             update_all_orders_status(order_ids, bulk_status)
+            clear_cached_views()
             st.success(f'Updated {len(order_ids)} orders to {bulk_status}.')
             st.rerun()
     else:
@@ -504,7 +536,7 @@ def render_owner_dashboard():
         with st.container(border=True):
             left, mid, right = st.columns([1, 2, 1])
             with left:
-                safe_show_image(row.get('image_url'))
+                safe_show_image(row.get('image_url', ''))
             with mid:
                 st.write(f"**{row['product_name']}**")
                 st.write(f"Customer: {row['customer_first_name']} {row['customer_last_name']} ({row['customer_email']})")
@@ -528,6 +560,7 @@ def render_owner_dashboard():
                 )
                 if st.button('Apply status', key=f"apply_status_{row['id']}"):
                     update_order_status(row['id'], new_status)
+                    clear_cached_views()
                     st.success('Order status updated.')
                     st.rerun()
                 if st.button('Delete order', key=f"delete_order_{row['id']}"):
@@ -542,7 +575,7 @@ def render_owner_dashboard():
         )
 
     st.subheader('User balances')
-    users = get_all_users()
+    users = cached_all_users()
     for user in users:
         cols = st.columns([2, 2, 1, 1])
         cols[0].write(f"**{user['first_name']} {user['last_name']}**")
@@ -552,6 +585,7 @@ def render_owner_dashboard():
         )
         if cols[3].button('Save', key=f"save_bal_{user['id']}"):
             update_balance(user['id'], new_balance)
+            clear_cached_views()
             st.success('Balance updated.')
             st.rerun()
 
@@ -561,6 +595,7 @@ def render_owner_dashboard():
 
     if st.button('Re-check bowling ball batch notification'):
         evaluate_ball_batch_notification()
+        clear_cached_views()
         st.success('Batch notification logic re-run.')
 
 

@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
+import streamlit as st
+
 from config import DATABASE_URL, DB_PATH, BALL_BATCH_THRESHOLD, BALL_PENDING_STATUSES
 from email_utils import maybe_send_ball_batch_email, send_order_status_email
 
@@ -63,7 +65,6 @@ CREATE TABLE IF NOT EXISTS saved_carts (
 );
 """
 
-
 POSTGRES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
@@ -110,20 +111,36 @@ CREATE TABLE IF NOT EXISTS saved_carts (
 );
 """
 
+INDEX_STATEMENTS = [
+    "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_product_type ON orders(product_type)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_timestamp ON orders(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_saved_carts_user_id ON saved_carts(user_id)",
+]
+
 
 def _dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
+if USE_POSTGRES:
+    @st.cache_resource(show_spinner=False)
+    def get_postgres_connection():
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+
+
 @contextmanager
 def get_conn():
     if USE_POSTGRES:
-        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        conn = get_postgres_connection()
         try:
             yield conn
             conn.commit()
-        finally:
-            conn.close()
+        except Exception:
+            conn.rollback()
+            raise
     else:
         Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(DB_PATH)
@@ -150,6 +167,8 @@ def _placeholders(n: int) -> str:
 def init_db() -> None:
     with get_conn() as conn:
         conn.execute(POSTGRES_SCHEMA if USE_POSTGRES else SQLITE_SCHEMA)
+        for stmt in INDEX_STATEMENTS:
+            conn.execute(stmt)
 
 
 def create_user(first_name: str, last_name: str, email: str):
@@ -310,6 +329,7 @@ def get_orders_for_user(user_id: int, statuses: Optional[Iterable[str]] = None):
     if statuses:
         statuses = list(statuses)
         query += f" AND status IN ({_placeholders(len(statuses))})"
+
         params.extend(statuses)
 
     query += " ORDER BY timestamp DESC, id DESC"
