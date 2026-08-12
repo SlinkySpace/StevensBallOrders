@@ -30,8 +30,8 @@ name: Refresh catalog
 on:
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: 'Check and report, but write nothing'
+      apply:
+        description: 'Write the results to the database (leave off for a dry run)'
         type: boolean
         default: false
       mode:
@@ -110,7 +110,14 @@ jobs:
           python optimize_images.py --delete-originals
 
       - name: Sync prices and stock to the database
-        if: ${{ inputs.dry_run != true }}
+        # Both forms are checked deliberately. The UI checkbox sends a real
+        # boolean but `gh workflow run -f apply=true` sends the string "true",
+        # and GitHub compares mixed types by coercing to numbers - so a plain
+        # `inputs.apply == true` silently fails for CLI runs. Phrased as
+        # opt-in, the worst case is a run that declines to write; the earlier
+        # `dry_run != true` phrasing failed the other way and wrote during what
+        # was meant to be a dry run.
+        if: ${{ inputs.apply == true || inputs.apply == 'true' }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SYNC_ACTOR: 'scheduled refresh'
@@ -120,7 +127,14 @@ jobs:
             --max-price-drift "${{ inputs.max_price_drift || '0.25' }}"
 
       - name: Commit the refreshed catalog
-        if: ${{ inputs.dry_run != true }}
+        # Both forms are checked deliberately. The UI checkbox sends a real
+        # boolean but `gh workflow run -f apply=true` sends the string "true",
+        # and GitHub compares mixed types by coercing to numbers - so a plain
+        # `inputs.apply == true` silently fails for CLI runs. Phrased as
+        # opt-in, the worst case is a run that declines to write; the earlier
+        # `dry_run != true` phrasing failed the other way and wrote during what
+        # was meant to be a dry run.
+        if: ${{ inputs.apply == true || inputs.apply == 'true' }}
         run: |
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'

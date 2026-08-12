@@ -130,7 +130,8 @@ $dryRun = (-not $Apply)
 Write-Step 3 $(if ($dryRun) { 'Starting a dry run (nothing will be written)' }
                else          { 'Starting a real refresh (prices WILL be updated)' })
 
-gh workflow run refresh-catalog.yml -R $repo --ref main -f dry_run=$($dryRun.ToString().ToLower())
+# Writing is opt-in: the workflow only touches the database when apply is true.
+gh workflow run refresh-catalog.yml -R $repo --ref main -f apply=$($Apply.ToString().ToLower())
 if ($LASTEXITCODE -ne 0) {
     Write-Host '    Could not start the workflow.' -ForegroundColor Red
     exit 1
