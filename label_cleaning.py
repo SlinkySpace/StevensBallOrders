@@ -54,6 +54,19 @@ def parse_categories(url):
 
 df = pd.read_csv(INPUT_CSV)
 
+# An empty scrape used to reach this point and fail inside pandas with
+# "Columns must be same length as key", which says nothing about the real cause.
+if df.empty:
+    raise SystemExit(
+        f"{INPUT_CSV} has no rows, so there is nothing to tag.\n"
+        "The scrape came back empty - usually an expired stormbowling.com "
+        "session. Regenerate it with:\n"
+        "    SCRAPER_SETUP_LOGIN=true python storm_scraper.py"
+    )
+
+if "product_url" not in df.columns:
+    raise SystemExit(f"{INPUT_CSV} has no product_url column: {sorted(df.columns)}")
+
 df[["main_category", "sub_category"]] = df["product_url"].apply(parse_categories)
 
 # Replace Unknown with previous row's category/subcategory

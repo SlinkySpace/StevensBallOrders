@@ -1,6 +1,7 @@
 import csv
 import os
 import re
+import sys
 import time
 from urllib.parse import urljoin
 
@@ -140,6 +141,123 @@ def extract_best_image_url(img_locator) -> str:
         return ""
 
 
+# Pulls every product-detail link on a listing page, with the best image it can
+# find nearby.
+#
+# Two shapes exist. Most products sit at /products/<main>/<sub>/<slug>, but a
+# handful (the 900 Global bags, Stormopoly) live at the site root as a single
+# hyphenated slug, so both are accepted and known non-product roots are excluded.
+# Erring towards including a link is cheap: the detail page then yields no name,
+# and rows without a name are dropped when the CSV is imported.
+#
+# This replaced an absolute XPath (/html/body/div[3]/div/...) which broke the
+# moment anything shifted the DOM - the cookie consent banner alone was enough.
+EXTRACT_LISTING_ITEMS_JS = """
+() => {
+  const NON_PRODUCT_ROOTS = new Set([
+    'products','company','events','community','cart','account','login','register',
+    'logout','search','contact','about','news','blog','dealers','sitemap',
+    'privacy-policy','terms-of-use','terms-and-conditions','terms-of-service',
+    'shipping-policy','return-policy','my-account','order-history','contact-us',
+    'about-us','where-to-buy','find-a-dealer','customer-service'
+  ]);
+
+  const isProduct = (href) => {
+    if (!href) return false;
+    let path;
+    try { path = new URL(href, location.origin).pathname; } catch (e) { return false; }
+    const parts = path.split('/').filter(Boolean);
+    if (!parts.length) return false;
+
+    if (parts[0] === 'products') {
+      return parts.length >= 4 && !/^\\d+$/.test(parts[1]);
+    }
+    // Root-level product page, e.g. /900-global-2-ball-deluxe-tote
+    return parts.length === 1
+        && parts[0].includes('-')
+        && !NON_PRODUCT_ROOTS.has(parts[0].toLowerCase());
+  };
+
+  const pickImage = (scope) => {
+    for (const img of scope.querySelectorAll('img')) {
+      for (const attr of ['data-src', 'data-lazy-src', 'data-original', 'src']) {
+        const v = img.getAttribute(attr);
+        if (v && !/ajax-loader|loading\\.gif|loader\\.gif|spinner/i.test(v)) return v;
+      }
+      const srcset = img.getAttribute('srcset') || img.getAttribute('data-srcset');
+      if (srcset) {
+        const first = srcset.split(',')[0].trim().split(/\\s+/)[0];
+        if (first) return first;
+      }
+    }
+    return '';
+  };
+
+  const seen = new Set();
+  const out = [];
+  for (const a of document.querySelectorAll('a[href]')) {
+    const href = a.getAttribute('href');
+    if (!isProduct(href)) continue;
+    const abs = new URL(href, location.origin).href;
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    // Climb to the enclosing card so the image lookup has somewhere to search.
+    const card = a.closest('li') || a.parentElement || a;
+    out.push({ product_url: abs, image_url: pickImage(card) || pickImage(a) });
+  }
+  return out;
+}
+"""
+
+LOGGED_OUT_MARKERS = ('register', 'login', 'sign in')
+
+
+def dismiss_cookie_banner(page) -> None:
+    """
+    The consent banner overlays the page and adds a div near the top of <body>.
+    Decline non-essential cookies, and settle for hiding it if no button matches.
+    """
+    for label in ('Deny', 'Decline', 'Reject all', 'Only necessary'):
+        try:
+            button = page.get_by_role('button', name=label, exact=False)
+            if button.count() > 0:
+                button.first.click(timeout=2500)
+                page.wait_for_timeout(400)
+                return
+        except Exception:
+            continue
+
+    # No recognisable button: drop any fixed overlay so it can't intercept clicks.
+    try:
+        page.evaluate("""
+            () => {
+              for (const el of document.querySelectorAll('div,section,aside')) {
+                const t = (el.innerText || '').toLowerCase();
+                if (t.includes('this website uses cookies') && el.offsetParent !== null) {
+                  el.style.display = 'none';
+                }
+              }
+            }
+        """)
+    except Exception:
+        pass
+
+
+def looks_logged_out(page) -> bool:
+    """
+    Storm only renders the dealer catalog to a signed-in account. A logged-out
+    scrape silently yields nothing (or retail pricing), so detect it explicitly.
+    """
+    try:
+        header = (page.inner_text('body', timeout=5000) or '')[:4000].lower()
+    except Exception:
+        return False
+
+    has_login_prompt = any(marker in header for marker in LOGGED_OUT_MARKERS)
+    has_account_hint = any(word in header for word in ('logout', 'log out', 'my account', 'sign out'))
+    return has_login_prompt and not has_account_hint
+
+
 def scroll_listing_page(page):
     """
     Scroll through the page to trigger lazy-loaded thumbnails.
@@ -205,55 +323,33 @@ def open_browser_context(playwright):
 
 
 def collect_listing_items(page, listing_url: str):
-    results = []
-
     page.goto(listing_url, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_timeout(1800)
+    page.wait_for_timeout(1200)
 
+    dismiss_cookie_banner(page)
     scroll_listing_page(page)
     page.wait_for_timeout(1200)
 
-    list_container = page.locator(f"xpath={LIST_CONTAINER_XPATH}")
-    if list_container.count() == 0:
-        print(f"[WARN] Could not find product list on {listing_url}")
-        return results
+    try:
+        found = page.evaluate(EXTRACT_LISTING_ITEMS_JS)
+    except Exception as exc:
+        print(f"[WARN] Could not read products from {listing_url}: {exc}")
+        return []
 
-    items = list_container.locator("xpath=./li")
-    item_count = items.count()
-    print(f"[DEBUG] Found {item_count} li elements")
-
-    if item_count == 0:
+    if not found:
         print(f"[INFO] No products found on {listing_url}")
-        return results
+        return []
 
-    for i in range(item_count):
-        item = items.nth(i)
-
-        link_locator = item.locator("xpath=./div/div[3]/div/a")
-        img_locator = item.locator("xpath=./div/div[3]/div/a/img")
-
-        href = attr_or_empty(link_locator, "href")
-        if not href:
-            continue
-
-        # Retry image extraction a few times to let lazy-loading settle
-        img_src = ""
-        for _ in range(4):
-            candidate = extract_best_image_url(img_locator)
-            if candidate and not is_loader_image(candidate):
-                img_src = candidate
-                break
-            page.wait_for_timeout(350)
-
-        product_url = urljoin(BASE_DOMAIN, href)
-        image_url = urljoin(BASE_DOMAIN, img_src) if img_src else ""
-
+    results = []
+    for entry in found:
+        image = str(entry.get("image_url") or "").strip()
         results.append({
             "listing_url": listing_url,
-            "product_url": product_url,
-            "image_url": image_url
+            "product_url": entry["product_url"],
+            "image_url": urljoin(BASE_DOMAIN, image) if image and not is_loader_image(image) else "",
         })
 
+    print(f"[DEBUG] Found {len(results)} product links")
     return results
 
 
@@ -392,7 +488,7 @@ def write_csv(rows, output_csv):
 def main():
     if SETUP_LOGIN:
         save_auth_state()
-        return
+        return 0
 
     all_rows = []
 
@@ -407,6 +503,22 @@ def main():
             print(f"[INFO] Listing page {page_num}: {listing_url}")
 
             listing_items = collect_listing_items(listing_page, listing_url)
+
+            # Storm shows the dealer catalog only to a signed-in account. Bail on
+            # the first page rather than grinding through 19 empty ones.
+            if page_num == START_PAGE and not listing_items:
+                if looks_logged_out(listing_page):
+                    browser.close()
+                    print(
+                        "\n[ERROR] Not signed in to stormbowling.com. The saved session "
+                        f"in {AUTH_STATE_FILE} has expired.\n"
+                        "        Regenerate it with SCRAPER_SETUP_LOGIN=true python storm_scraper.py\n"
+                        "        and update the STORM_AUTH_STATE secret.",
+                    )
+                    return 2
+                print("[WARN] First listing page returned no products while apparently "
+                      "signed in - the page layout may have changed.")
+
             print(f"[INFO] Found {len(listing_items)} products on page {page_num}")
 
             for idx, item in enumerate(listing_items, start=1):
@@ -435,9 +547,17 @@ def main():
 
         browser.close()
 
+    if not all_rows:
+        # Writing an empty CSV here used to push the failure downstream, where
+        # label_cleaning.py died with "Columns must be same length as key".
+        print("\n[ERROR] Scraped 0 products. Nothing was written; the previous "
+              f"{OUTPUT_CSV} is left untouched.")
+        return 2
+
     write_csv(all_rows, OUTPUT_CSV)
     print(f"\nDone. Wrote {len(all_rows)} rows to {OUTPUT_CSV}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
