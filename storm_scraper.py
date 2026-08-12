@@ -164,31 +164,37 @@ EXTRACT_LISTING_ITEMS_JS = """
 
   const bareHost = (h) => (h || '').replace(/^www\\./, '').toLowerCase();
 
-  const isProduct = (href) => {
-    if (!href) return false;
-
+  const partsOf = (href) => {
+    if (!href) return null;
     let url;
-    try { url = new URL(href, location.origin); } catch (e) { return false; }
-
+    try { url = new URL(href, location.origin); } catch (e) { return null; }
     // Without these two checks "tel:(435)-723-0403" parses to a pathname of
     // "(435)-723-0403", which the root-slug rule below happily accepted - and
     // the scraper then tried to navigate to it.
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-    if (bareHost(url.hostname) !== bareHost(location.hostname)) return false;
-
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    if (bareHost(url.hostname) !== bareHost(location.hostname)) return null;
     const parts = url.pathname.split('/').filter(Boolean);
-    if (!parts.length) return false;
+    return parts.length ? parts : null;
+  };
 
-    if (parts[0] === 'products') {
-      return parts.length >= 4 && !/^\\d+$/.test(parts[1]);
-    }
-    // Root-level product page, e.g. /900-global-2-ball-deluxe-tote
+  // Unambiguous: /products/<main>/<sub>/<slug>. Used to find the grid.
+  const isCatalogPath = (href) => {
+    const parts = partsOf(href);
+    return !!parts && parts[0] === 'products' && parts.length >= 4 && !/^\\d+$/.test(parts[1]);
+  };
+
+  // Root-level product, e.g. /900-global-2-ball-deluxe-tote. Only trusted
+  // inside the grid, since most single hyphenated slugs are content pages.
+  const isRootProduct = (href) => {
+    const parts = partsOf(href);
+    if (!parts || parts.length !== 1) return false;
     const slug = parts[0].toLowerCase();
-    return parts.length === 1
-        && /^[a-z0-9][a-z0-9-]*$/.test(slug)
+    return /^[a-z0-9][a-z0-9-]*$/.test(slug)
         && slug.includes('-')
         && !NON_PRODUCT_ROOTS.has(slug);
   };
+
+  const isProduct = (href) => isCatalogPath(href) || isRootProduct(href);
 
   const pickImage = (scope) => {
     for (const img of scope.querySelectorAll('img')) {
@@ -205,12 +211,35 @@ EXTRACT_LISTING_ITEMS_JS = """
     return '';
   };
 
+  // Scanning the whole document was far too greedy: a first attempt pulled 805
+  // nav and content pages (about-storm-products, ball-compare, ...) alongside
+  // 82 real ones, because they are also single hyphenated slugs.
+  //
+  // So locate the product grid first, using only the unambiguous
+  // /products/<main>/<sub>/<slug> links, then read root-level products from
+  // inside that container. Site navigation lives outside it.
+  const anchors = [...document.querySelectorAll('a[href]')];
+  const strict = anchors.filter(a => isCatalogPath(a.getAttribute('href')));
+
+  const tally = new Map();
+  for (const a of strict) {
+    const cell = a.closest('li') || a.parentElement;
+    const container = cell ? cell.parentElement : null;
+    if (container) tally.set(container, (tally.get(container) || 0) + 1);
+  }
+  const grid = [...tally.entries()].sort((x, y) => y[1] - x[1])[0];
+
+  // Without a recognisable grid, take only the unambiguous links so navigation
+  // can never leak in.
+  const scope = grid ? grid[0] : document;
+  const candidates = grid
+    ? [...scope.querySelectorAll('a[href]')].filter(a => isProduct(a.getAttribute('href')))
+    : strict;
+
   const seen = new Set();
   const out = [];
-  for (const a of document.querySelectorAll('a[href]')) {
-    const href = a.getAttribute('href');
-    if (!isProduct(href)) continue;
-    const abs = new URL(href, location.origin).href;
+  for (const a of candidates) {
+    const abs = new URL(a.getAttribute('href'), location.origin).href;
     if (seen.has(abs)) continue;
     seen.add(abs);
     // Climb to the enclosing card so the image lookup has somewhere to search.
@@ -520,20 +549,31 @@ def main():
 
             listing_items = collect_listing_items(listing_page, listing_url)
 
-            # Storm shows the dealer catalog only to a signed-in account. Bail on
-            # the first page rather than grinding through 19 empty ones.
-            if page_num == START_PAGE and not listing_items:
+            # Check the session on the first page whatever came back. Checking
+            # only when the list was empty missed the case that actually
+            # happened: a logged-out scrape still returns links, it just prices
+            # them at retail instead of the team's sponsor rate - and then spent
+            # 42 minutes collecting the wrong numbers.
+            if page_num == START_PAGE:
                 if looks_logged_out(listing_page):
                     browser.close()
                     print(
-                        "\n[ERROR] Not signed in to stormbowling.com. The saved session "
-                        f"in {AUTH_STATE_FILE} has expired.\n"
-                        "        Regenerate it with SCRAPER_SETUP_LOGIN=true python storm_scraper.py\n"
-                        "        and update the STORM_AUTH_STATE secret.",
+                        "\n[ERROR] Not signed in to stormbowling.com.\n"
+                        "        Prices on this site are the public retail ones unless the\n"
+                        "        scraper is signed in, so continuing would collect the wrong\n"
+                        f"        figures. The saved session in {AUTH_STATE_FILE} is not working.\n\n"
+                        "        Regenerate it locally with:\n"
+                        "            SCRAPER_SETUP_LOGIN=true python storm_scraper.py\n"
+                        "        then update the STORM_AUTH_STATE secret.\n\n"
+                        "        If a freshly saved session still fails here but works on your\n"
+                        "        own machine, Storm is probably tying the login to the browser\n"
+                        "        or network it was created on, and the scrape has to be run\n"
+                        "        locally rather than from CI."
                     )
                     return 2
-                print("[WARN] First listing page returned no products while apparently "
-                      "signed in - the page layout may have changed.")
+                if not listing_items:
+                    print("[WARN] First listing page returned no products while apparently "
+                          "signed in - the page layout may have changed.")
 
             print(f"[INFO] Found {len(listing_items)} products on page {page_num}")
 
