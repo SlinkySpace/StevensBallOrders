@@ -41,6 +41,16 @@ CREATE TABLE IF NOT EXISTS orders (
     customer_first_name TEXT NOT NULL,
     customer_last_name TEXT NOT NULL,
     customer_email TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    total_price REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'submitted',
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
     product_name TEXT NOT NULL,
     sku TEXT DEFAULT '',
     option_type TEXT DEFAULT '',
@@ -51,12 +61,10 @@ CREATE TABLE IF NOT EXISTS orders (
     image_url TEXT DEFAULT '',
     product_url TEXT DEFAULT '',
     note TEXT DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'submitted',
-    timestamp TEXT NOT NULL,
     main_category TEXT DEFAULT '',
     sub_category TEXT DEFAULT '',
     product_type TEXT DEFAULT '',
-    FOREIGN KEY(user_id) REFERENCES users(id)
+    FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS app_state (
@@ -107,6 +115,15 @@ CREATE TABLE IF NOT EXISTS orders (
     customer_first_name TEXT NOT NULL,
     customer_last_name TEXT NOT NULL,
     customer_email TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    total_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'submitted',
+    timestamp TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id BIGSERIAL PRIMARY KEY,
+    order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     product_name TEXT NOT NULL,
     sku TEXT DEFAULT '',
     option_type TEXT DEFAULT '',
@@ -117,8 +134,6 @@ CREATE TABLE IF NOT EXISTS orders (
     image_url TEXT DEFAULT '',
     product_url TEXT DEFAULT '',
     note TEXT DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'submitted',
-    timestamp TEXT NOT NULL,
     main_category TEXT DEFAULT '',
     sub_category TEXT DEFAULT '',
     product_type TEXT DEFAULT ''
@@ -157,8 +172,9 @@ INDEX_STATEMENTS = [
     "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
     "CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)",
-    "CREATE INDEX IF NOT EXISTS idx_orders_product_type ON orders(product_type)",
     "CREATE INDEX IF NOT EXISTS idx_orders_timestamp ON orders(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id)",
+    "CREATE INDEX IF NOT EXISTS idx_order_items_product_type ON order_items(product_type)",
     "CREATE INDEX IF NOT EXISTS idx_saved_carts_user_id ON saved_carts(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_products_visible ON products(is_visible)",
     "CREATE INDEX IF NOT EXISTS idx_products_sub_category ON products(sub_category)",
@@ -244,6 +260,100 @@ def _placeholders(n: int) -> str:
     return ",".join([_placeholder()] * n)
 
 
+def _table_columns(conn, table: str) -> set[str]:
+    if USE_POSTGRES:
+        rows = conn.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+            (table,),
+        ).fetchall()
+        return {str(row['column_name']) for row in rows}
+    return {str(row['name']) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _table_exists(conn, table: str) -> bool:
+    if USE_POSTGRES:
+        row = conn.execute(
+            "SELECT to_regclass(%s) AS reg", (f'public.{table}',)
+        ).fetchone()
+        return bool(row and row['reg'])
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?", (table,)
+    ).fetchone()
+    return bool(row)
+
+
+def _migrate_orders_to_line_items(conn) -> None:
+    """
+    Move from one-row-per-item to an order header plus order_items.
+
+    The old table stored each cart line as its own order, which meant a status
+    change emailed the customer once per item and had to be repeated for every
+    line. Legacy rows carry no grouping key, but everything placed in a single
+    checkout was written in one loop, so (user_id, timestamp) reconstructs the
+    original baskets.
+
+    The old table is kept as orders_legacy_backup rather than dropped.
+    """
+    if not _table_exists(conn, 'orders'):
+        return  # fresh install; the schema below creates both tables
+    if 'product_name' not in _table_columns(conn, 'orders'):
+        return  # already migrated
+
+    legacy = conn.execute("SELECT * FROM orders ORDER BY id").fetchall()
+    conn.execute("ALTER TABLE orders RENAME TO orders_legacy_backup")
+
+    # Recreate both tables in the new shape before backfilling.
+    if USE_POSTGRES:
+        conn.execute(POSTGRES_SCHEMA)
+    else:
+        conn.executescript(SQLITE_SCHEMA)
+
+    if not legacy:
+        return
+
+    baskets: dict[tuple, list[dict]] = {}
+    for row in legacy:
+        row = dict(row)
+        key = (row['user_id'], str(row['timestamp']), str(row['status']))
+        baskets.setdefault(key, []).append(row)
+
+    for (user_id, timestamp, status), items in baskets.items():
+        first = items[0]
+        total = round(sum(float(i.get('total_price') or 0) for i in items), 2)
+
+        conn.execute(
+            f"""INSERT INTO orders(user_id, customer_first_name, customer_last_name,
+                   customer_email, note, total_price, status, timestamp)
+                VALUES ({_placeholders(8)})""",
+            (user_id, first['customer_first_name'], first['customer_last_name'],
+             first['customer_email'], '', total, status, timestamp),
+        )
+        order_id = conn.execute(
+            f"""SELECT id FROM orders WHERE user_id = {_placeholder()}
+                AND timestamp = {_placeholder()} AND status = {_placeholder()}
+                ORDER BY id DESC""",
+            (user_id, timestamp, status),
+        ).fetchone()['id']
+
+        for item in items:
+            conn.execute(
+                f"""INSERT INTO order_items(order_id, product_name, sku, option_type,
+                       option_value, quantity, unit_price, total_price, image_url,
+                       product_url, note, main_category, sub_category, product_type)
+                    VALUES ({_placeholders(14)})""",
+                (order_id, item['product_name'], item.get('sku', ''),
+                 item.get('option_type', ''), item.get('option_value', ''),
+                 item.get('quantity', 1), item.get('unit_price', 0),
+                 item.get('total_price', 0), item.get('image_url', ''),
+                 item.get('product_url', ''), item.get('note', ''),
+                 item.get('main_category', ''), item.get('sub_category', ''),
+                 item.get('product_type', '')),
+            )
+
+    print(f'[migration] regrouped {len(legacy)} order rows into {len(baskets)} orders; '
+          'the previous table is kept as orders_legacy_backup')
+
+
 def _add_column_if_missing(conn, table: str, column: str, definition: str) -> None:
     """
     CREATE TABLE IF NOT EXISTS silently does nothing when the table already
@@ -262,6 +372,10 @@ def _add_column_if_missing(conn, table: str, column: str, definition: str) -> No
 @st.cache_resource(show_spinner=False)
 def _run_migrations_once() -> bool:
     with get_conn() as conn:
+        # Must run before the schema below, since it renames the old table out
+        # of the way and recreates both in the new shape.
+        _migrate_orders_to_line_items(conn)
+
         if USE_POSTGRES:
             conn.execute(POSTGRES_SCHEMA)
         else:
@@ -391,66 +505,92 @@ def clear_saved_cart(user_id: int) -> None:
         )
 
 
-def place_order_items(user: dict, cart_items: list[dict], checkout_note: str = '') -> None:
-    total_to_add = 0.0
+ORDER_ITEM_COLUMNS = (
+    'product_name', 'sku', 'option_type', 'option_value', 'quantity',
+    'unit_price', 'total_price', 'image_url', 'product_url', 'note',
+    'main_category', 'sub_category', 'product_type',
+)
+
+
+def _attach_items(conn, orders: list) -> list[dict]:
+    """
+    Hang each order's items off it, in one extra query rather than one per order.
+    """
+    orders = [dict(row) for row in orders]
+    if not orders:
+        return orders
+
+    ids = [int(o['id']) for o in orders]
+    items = conn.execute(
+        f"SELECT * FROM order_items WHERE order_id IN ({_placeholders(len(ids))}) "
+        f"ORDER BY id",
+        ids,
+    ).fetchall()
+
+    by_order: dict[int, list[dict]] = {order_id: [] for order_id in ids}
+    for item in items:
+        item = dict(item)
+        by_order.setdefault(int(item['order_id']), []).append(item)
+
+    for order in orders:
+        order['items'] = by_order.get(int(order['id']), [])
+        order['item_count'] = sum(int(i.get('quantity') or 0) for i in order['items'])
+    return orders
+
+
+def place_order_items(user: dict, cart_items: list[dict], checkout_note: str = '') -> int:
+    """
+    Write one order that owns every line in the cart, and return its id.
+    """
+    if not cart_items:
+        return 0
+
+    order_total = round(
+        sum(int(i.get('quantity', 1) or 1) * float(i.get('unit_price', 0) or 0)
+            for i in cart_items),
+        2,
+    )
+    timestamp = now_iso()
+
     with get_conn() as conn:
+        conn.execute(
+            f"""INSERT INTO orders(user_id, customer_first_name, customer_last_name,
+                   customer_email, note, total_price, status, timestamp)
+                VALUES ({_placeholders(6)}, 'submitted', {_placeholder()})""",
+            (user['id'], user['first_name'], user['last_name'], user['email'],
+             str(checkout_note or '').strip(), order_total, timestamp),
+        )
+        order_id = int(conn.execute(
+            f"""SELECT id FROM orders WHERE user_id = {_placeholder()}
+                AND timestamp = {_placeholder()} ORDER BY id DESC""",
+            (user['id'], timestamp),
+        ).fetchone()['id'])
+
         for item in cart_items:
             quantity = int(item.get('quantity', 1) or 1)
             unit_price = float(item.get('unit_price', 0) or 0)
-            total_price = round(quantity * unit_price, 2)
-            total_to_add += total_price
-
-            item_note = str(item.get('note', '') or '').strip()
-            checkout_note_clean = str(checkout_note or '').strip()
-            merged_note = item_note
-            if checkout_note_clean:
-                merged_note = f"{item_note} | Checkout: {checkout_note_clean}" if item_note else f"Checkout: {checkout_note_clean}"
-
             conn.execute(
-                f"""
-                INSERT INTO orders(
-                    user_id, customer_first_name, customer_last_name, customer_email,
-                    product_name, sku, option_type, option_value, quantity, unit_price,
-                    total_price, image_url, product_url, note, status, timestamp,
-                    main_category, sub_category, product_type
-                )
-                VALUES (
-                    {_placeholder()}, {_placeholder()}, {_placeholder()}, {_placeholder()},
-                    {_placeholder()}, {_placeholder()}, {_placeholder()}, {_placeholder()},
-                    {_placeholder()}, {_placeholder()}, {_placeholder()}, {_placeholder()},
-                    {_placeholder()}, {_placeholder()}, 'submitted', {_placeholder()},
-                    {_placeholder()}, {_placeholder()}, {_placeholder()}
-                )
-                """,
-                (
-                    user['id'],
-                    user['first_name'],
-                    user['last_name'],
-                    user['email'],
-                    str(item.get('name', '')),
-                    str(item.get('sku', '')),
-                    str(item.get('option_type', '')),
-                    str(item.get('option_value', '')),
-                    quantity,
-                    unit_price,
-                    total_price,
-                    str(item.get('image_url', '')),
-                    str(item.get('product_url', '')),
-                    merged_note,
-                    now_iso(),
-                    str(item.get('main_category', '')),
-                    str(item.get('sub_category', '')),
-                    str(item.get('product_type', '')),
-                ),
+                f"""INSERT INTO order_items(order_id, product_name, sku, option_type,
+                       option_value, quantity, unit_price, total_price, image_url,
+                       product_url, note, main_category, sub_category, product_type)
+                    VALUES ({_placeholders(14)})""",
+                (order_id, str(item.get('name', '')), str(item.get('sku', '')),
+                 str(item.get('option_type', '')), str(item.get('option_value', '')),
+                 quantity, unit_price, round(quantity * unit_price, 2),
+                 str(item.get('image_url', '')), str(item.get('product_url', '')),
+                 str(item.get('note', '') or '').strip(),
+                 str(item.get('main_category', '')), str(item.get('sub_category', '')),
+                 str(item.get('product_type', ''))),
             )
 
         conn.execute(
             f"UPDATE users SET balance_owed = balance_owed + {_placeholder()} WHERE id = {_placeholder()}",
-            (round(total_to_add, 2), user['id']),
+            (order_total, user['id']),
         )
 
     clear_saved_cart(int(user["id"]))
     evaluate_ball_batch_notification()
+    return order_id
 
 
 def get_orders_for_user(user_id: int, statuses: Optional[Iterable[str]] = None):
@@ -465,8 +605,7 @@ def get_orders_for_user(user_id: int, statuses: Optional[Iterable[str]] = None):
     query += " ORDER BY timestamp DESC, id DESC"
 
     with get_conn() as conn:
-        rows = conn.execute(query, params).fetchall()
-    return rows
+        return _attach_items(conn, conn.execute(query, params).fetchall())
 
 
 def get_all_orders(statuses: Optional[Iterable[str]] = None):
@@ -481,18 +620,26 @@ def get_all_orders(statuses: Optional[Iterable[str]] = None):
     query += " ORDER BY timestamp DESC, id DESC"
 
     with get_conn() as conn:
-        rows = conn.execute(query, params).fetchall()
-    return rows
+        return _attach_items(conn, conn.execute(query, params).fetchall())
+
+
+def get_order(order_id: int) -> Optional[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM orders WHERE id = {_placeholder()}", (order_id,)
+        ).fetchall()
+        orders = _attach_items(conn, rows)
+    return orders[0] if orders else None
 
 
 def update_order_status(order_id: int, new_status: str) -> None:
     with get_conn() as conn:
-        order = conn.execute(
-            f"SELECT * FROM orders WHERE id = {_placeholder()}",
-            (order_id,),
-        ).fetchone()
-        if not order:
+        rows = conn.execute(
+            f"SELECT * FROM orders WHERE id = {_placeholder()}", (order_id,)
+        ).fetchall()
+        if not rows:
             return
+        order = _attach_items(conn, rows)[0]
 
         conn.execute(
             f"UPDATE orders SET status = {_placeholder()} WHERE id = {_placeholder()}",
@@ -500,6 +647,7 @@ def update_order_status(order_id: int, new_status: str) -> None:
         )
         order['status'] = new_status
 
+    # One email for the whole order, however many items it holds.
     if new_status in {'approved', 'ordered', 'fulfilled'}:
         send_order_status_email(order, new_status)
     evaluate_ball_batch_notification()
@@ -513,13 +661,12 @@ def update_all_orders_status(order_ids: Iterable[int], new_status: str) -> None:
     placeholders = _placeholders(len(ids))
 
     with get_conn() as conn:
-        affected_orders = conn.execute(
-            f"SELECT * FROM orders WHERE id IN ({placeholders})",
-            ids,
+        rows = conn.execute(
+            f"SELECT * FROM orders WHERE id IN ({placeholders})", ids
         ).fetchall()
-
-        if not affected_orders:
+        if not rows:
             return
+        affected_orders = _attach_items(conn, rows)
 
         conn.execute(
             f"UPDATE orders SET status = {_placeholder()} WHERE id IN ({placeholders})",
@@ -547,9 +694,13 @@ def delete_order(order_id: int) -> None:
         total_price = round(float(row.get('total_price', 0) or 0), 2)
         user_id = int(row['user_id'])
 
+        # Explicit rather than relying on ON DELETE CASCADE, which SQLite only
+        # honours when foreign_keys pragma is on.
         conn.execute(
-            f"DELETE FROM orders WHERE id = {_placeholder()}",
-            (order_id,),
+            f"DELETE FROM order_items WHERE order_id = {_placeholder()}", (order_id,)
+        )
+        conn.execute(
+            f"DELETE FROM orders WHERE id = {_placeholder()}", (order_id,)
         )
 
         conn.execute(
@@ -575,19 +726,21 @@ def get_all_users():
     return rows
 
 
-def get_pending_ball_orders_count() -> int:
-    placeholders = _placeholders(len(BALL_PENDING_STATUSES))
+PENDING_BALL_COUNT_QUERY_TEMPLATE = """
+    SELECT COALESCE(SUM(oi.quantity), 0) AS total_count
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE oi.product_type = 'bowling_ball'
+      AND o.status IN ({placeholders})
+"""
 
+
+def get_pending_ball_orders_count() -> int:
+    query = PENDING_BALL_COUNT_QUERY_TEMPLATE.format(
+        placeholders=_placeholders(len(BALL_PENDING_STATUSES))
+    )
     with get_conn() as conn:
-        row = conn.execute(
-            f"""
-            SELECT COALESCE(SUM(quantity), 0) AS total_count
-            FROM orders
-            WHERE product_type = 'bowling_ball'
-              AND status IN ({placeholders})
-            """,
-            tuple(BALL_PENDING_STATUSES),
-        ).fetchone()
+        row = conn.execute(query, tuple(BALL_PENDING_STATUSES)).fetchone()
 
     return int(row['total_count'] or 0)
 
@@ -597,24 +750,25 @@ def _grouped_pending_ball_query() -> str:
 
     if USE_POSTGRES:
         customers = (
-            "STRING_AGG(customer_first_name || ' ' || customer_last_name, ', ' "
-            "ORDER BY customer_first_name, customer_last_name)"
+            "STRING_AGG(o.customer_first_name || ' ' || o.customer_last_name, ', ' "
+            "ORDER BY o.customer_first_name, o.customer_last_name)"
         )
     else:
-        customers = "GROUP_CONCAT(customer_first_name || ' ' || customer_last_name, ', ')"
+        customers = "GROUP_CONCAT(o.customer_first_name || ' ' || o.customer_last_name, ', ')"
 
     return f"""
         SELECT
-            product_name,
-            sku,
-            option_value,
-            SUM(quantity) AS total_qty,
+            oi.product_name AS product_name,
+            oi.sku AS sku,
+            oi.option_value AS option_value,
+            SUM(oi.quantity) AS total_qty,
             {customers} AS customers
-        FROM orders
-        WHERE product_type = 'bowling_ball'
-          AND status IN ({placeholders})
-        GROUP BY product_name, sku, option_value
-        ORDER BY product_name, option_value
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE oi.product_type = 'bowling_ball'
+          AND o.status IN ({placeholders})
+        GROUP BY oi.product_name, oi.sku, oi.option_value
+        ORDER BY oi.product_name, oi.option_value
     """
 
 
@@ -913,12 +1067,7 @@ def get_owner_dashboard_data(statuses: Optional[Iterable[str]] = None) -> dict:
 
     with get_conn() as conn:
         pending_row = conn.execute(
-            f"""
-            SELECT COALESCE(SUM(quantity), 0) AS total_count
-            FROM orders
-            WHERE product_type = 'bowling_ball'
-              AND status IN ({ball_placeholders})
-            """,
+            PENDING_BALL_COUNT_QUERY_TEMPLATE.format(placeholders=ball_placeholders),
             tuple(BALL_PENDING_STATUSES),
         ).fetchone()
 
@@ -935,7 +1084,7 @@ def get_owner_dashboard_data(statuses: Optional[Iterable[str]] = None) -> dict:
             order_query += f" WHERE status IN ({_placeholders(len(status_list))})"
             order_params.extend(status_list)
         order_query += " ORDER BY timestamp DESC, id DESC"
-        orders = conn.execute(order_query, order_params).fetchall()
+        orders = _attach_items(conn, conn.execute(order_query, order_params).fetchall())
 
         users = conn.execute(
             "SELECT * FROM users ORDER BY last_name, first_name, email"

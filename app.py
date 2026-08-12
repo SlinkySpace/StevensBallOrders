@@ -648,71 +648,107 @@ def render_profile_page():
                 st.error(error)
 
 
-ORDER_TABLE_COLUMNS = [
-    'timestamp', 'product_name', 'sku', 'option_value',
-    'quantity', 'total_price', 'status', 'note',
-]
+ITEM_TABLE_COLUMNS = ['product_name', 'sku', 'option_value', 'quantity', 'unit_price', 'total_price', 'note']
 
-ORDER_COLUMN_CONFIG = {
-    'timestamp': st.column_config.DatetimeColumn('Ordered', format='MMM D, YYYY h:mm a'),
+ITEM_COLUMN_CONFIG = {
     'product_name': st.column_config.TextColumn('Product', width='large'),
     'sku': st.column_config.TextColumn('SKU', width='small'),
     'option_value': st.column_config.TextColumn('Option', width='small'),
     'quantity': st.column_config.NumberColumn('Qty', width='small'),
-    'total_price': st.column_config.NumberColumn('Total', format='$%.2f'),
-    'status': st.column_config.TextColumn('Status', width='small'),
+    'unit_price': st.column_config.NumberColumn('Unit', format='$%.2f'),
+    'total_price': st.column_config.NumberColumn('Line total', format='$%.2f'),
     'note': st.column_config.TextColumn('Note', width='medium'),
 }
 
 
-def _orders_dataframe(rows):
-    if not rows:
-        return pd.DataFrame(columns=ORDER_TABLE_COLUMNS)
-    return pd.DataFrame([{k: row[k] for k in row.keys()} for row in rows])
+def _items_dataframe(items):
+    if not items:
+        return pd.DataFrame(columns=ITEM_TABLE_COLUMNS)
+    return pd.DataFrame(items).reindex(columns=ITEM_TABLE_COLUMNS)
 
 
-def _render_orders_table(rows):
-    df = _orders_dataframe(rows)[ORDER_TABLE_COLUMNS].copy()
-    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        column_config=ORDER_COLUMN_CONFIG,
-    )
+def _flat_order_rows(orders):
+    """One row per item, with its order's details alongside - for CSV export."""
+    rows = []
+    for order in orders:
+        for item in order.get('items', []):
+            rows.append({
+                'order_id': order['id'],
+                'ordered': order['timestamp'],
+                'status': order['status'],
+                'product_name': item.get('product_name', ''),
+                'sku': item.get('sku', ''),
+                'option_value': item.get('option_value', ''),
+                'quantity': item.get('quantity', 0),
+                'unit_price': item.get('unit_price', 0),
+                'line_total': item.get('total_price', 0),
+                'item_note': item.get('note', ''),
+                'order_note': order.get('note', ''),
+                'order_total': order.get('total_price', 0),
+            })
+    return rows
+
+
+def _render_order_list(orders, show_customer: bool = False):
+    """One expander per order, holding that order's items."""
+    for order in orders:
+        items = order.get('items', [])
+        unit_count = order.get('item_count', 0)
+        header = (
+            f"Order #{order['id']}  ·  {order['timestamp']}  ·  "
+            f"{unit_count} item{'s' if unit_count != 1 else ''}  ·  "
+            f"{currency(float(order['total_price'] or 0))}  ·  {order['status']}"
+        )
+        if show_customer:
+            header = f"{order['customer_first_name']} {order['customer_last_name']}  —  " + header
+
+        with st.expander(header):
+            if order.get('note'):
+                st.caption(f"Note: {order['note']}")
+            st.dataframe(
+                _items_dataframe(items),
+                use_container_width=True,
+                hide_index=True,
+                column_config=ITEM_COLUMN_CONFIG,
+            )
 
 
 def render_outstanding_orders_page():
     st.title('Outstanding Orders')
     user = get_current_user()
-    rows = get_orders_for_user(user['id'], ACTIVE_ORDER_STATUSES)
-    if not rows:
+    orders = get_orders_for_user(user['id'], ACTIVE_ORDER_STATUSES)
+    if not orders:
         st.info('No active orders right now.')
         return
 
-    outstanding_total = sum(float(row['total_price'] or 0) for row in rows)
-    c1, c2 = st.columns(2)
-    c1.metric('Active orders', len(rows))
-    c2.metric('Value of active orders', currency(outstanding_total))
-    _render_orders_table(rows)
+    outstanding_total = sum(float(o['total_price'] or 0) for o in orders)
+    items_total = sum(o.get('item_count', 0) for o in orders)
+    c1, c2, c3 = st.columns(3)
+    c1.metric('Active orders', len(orders))
+    c2.metric('Items', items_total)
+    c3.metric('Value', currency(outstanding_total))
+    _render_order_list(orders)
 
 
 def render_order_history_page():
     st.title('Order History')
     user = get_current_user()
-    rows = get_orders_for_user(user['id'])
-    if not rows:
+    orders = get_orders_for_user(user['id'])
+    if not orders:
         st.info('No order history yet.')
         return
 
-    st.caption(f'{len(rows)} order(s), all statuses.')
-    _render_orders_table(rows)
-    st.download_button(
-        'Download my orders (CSV)',
-        data=_orders_dataframe(rows)[ORDER_TABLE_COLUMNS].to_csv(index=False).encode('utf-8'),
-        file_name='my_bowling_orders.csv',
-        mime='text/csv',
-    )
+    st.caption(f'{len(orders)} order(s), all statuses.')
+    _render_order_list(orders)
+
+    flat = _flat_order_rows(orders)
+    if flat:
+        st.download_button(
+            'Download my orders (CSV)',
+            data=pd.DataFrame(flat).to_csv(index=False).encode('utf-8'),
+            file_name='my_bowling_orders.csv',
+            mime='text/csv',
+        )
 
 
 def render_security_notices(users):
@@ -780,39 +816,51 @@ def render_owner_dashboard():
     else:
         st.info('No orders match the current filter.')
 
-    for row in all_filtered_rows:
+    for order in all_filtered_rows:
+        items = order.get('items', [])
+        unit_count = order.get('item_count', 0)
+
         with st.container(border=True):
-            left, mid, right = st.columns([1, 2, 1])
+            left, right = st.columns([3, 1])
             with left:
-                show_image(row.get('image_url'), alt=str(row.get('product_name', '')))
-            with mid:
-                st.write(f"**{row['product_name']}**")
-                st.write(f"Customer: {row['customer_first_name']} {row['customer_last_name']} ({row['customer_email']})")
-                st.write(f"SKU: {row['sku'] or 'N/A'}")
-                if row['option_type']:
-                    st.write(f"{row['option_type']}: {row['option_value']}")
-                st.write(f"Quantity: {row['quantity']}")
-                st.write(f"Price: {currency(float(row['total_price']))}")
-                st.write(f"Status: {row['status']}")
-                st.write(f"Timestamp: {row['timestamp']}")
-                if row['note']:
-                    st.write(f"Note: {row['note']}")
-                if str(row.get('product_url', '')).strip().startswith(('http://', 'https://')):
-                    st.markdown(f"[Open Storm page]({row['product_url']})")
+                st.markdown(
+                    f"**Order #{order['id']}** · {order['customer_first_name']} "
+                    f"{order['customer_last_name']} ({order['customer_email']})"
+                )
+                st.caption(
+                    f"{order['timestamp']} · {unit_count} item"
+                    f"{'s' if unit_count != 1 else ''} · "
+                    f"{currency(float(order['total_price'] or 0))} · {order['status']}"
+                )
+                if order.get('note'):
+                    st.caption(f"Note: {order['note']}")
+
+                st.dataframe(
+                    _items_dataframe(items),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=ITEM_COLUMN_CONFIG,
+                )
             with right:
+                # One control for the whole order, and one email when it changes.
                 new_status = st.selectbox(
                     'Update status',
                     ORDER_STATUS_OPTIONS,
-                    index=ORDER_STATUS_OPTIONS.index(row['status']) if row['status'] in ORDER_STATUS_OPTIONS else 0,
-                    key=f"status_sel_{row['id']}"
+                    index=ORDER_STATUS_OPTIONS.index(order['status'])
+                    if order['status'] in ORDER_STATUS_OPTIONS else 0,
+                    key=f"status_sel_{order['id']}",
                 )
-                if st.button('Apply status', key=f"apply_status_{row['id']}"):
-                    update_order_status(row['id'], new_status)
+                if st.button('Apply status', key=f"apply_status_{order['id']}",
+                             use_container_width=True):
+                    update_order_status(order['id'], new_status)
                     st.success('Order status updated.')
                     st.rerun()
-                if st.button('Delete order', key=f"delete_order_{row['id']}"):
-                    st.session_state['delete_target_order_id'] = int(row['id'])
-                    st.session_state['delete_target_product_name'] = str(row['product_name'])
+                if st.button('Delete order', key=f"delete_order_{order['id']}",
+                             use_container_width=True):
+                    st.session_state['delete_target_order_id'] = int(order['id'])
+                    st.session_state['delete_target_product_name'] = (
+                        f"{unit_count} item{'s' if unit_count != 1 else ''}"
+                    )
                     st.rerun()
 
     if st.session_state.get('delete_target_order_id') is not None:
@@ -843,9 +891,12 @@ def render_owner_dashboard():
             st.success(f"Password cleared for {user['email']}.")
             st.rerun()
 
-    export_df = _orders_dataframe(all_filtered_rows)
-    csv_bytes = export_df.to_csv(index=False).encode('utf-8') if not export_df.empty else b''
-    st.download_button('Export shown orders to CSV', data=csv_bytes, file_name='orders_export.csv', mime='text/csv')
+    # Flattened to one row per item, which is what you want when actually
+    # placing the order with Storm.
+    flat = _flat_order_rows(all_filtered_rows)
+    csv_bytes = pd.DataFrame(flat).to_csv(index=False).encode('utf-8') if flat else b''
+    st.download_button('Export shown orders to CSV', data=csv_bytes,
+                       file_name='orders_export.csv', mime='text/csv')
 
     if st.button('Re-check bowling ball batch notification'):
         evaluate_ball_batch_notification()

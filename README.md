@@ -158,10 +158,19 @@ production.
 
 - **users** - `id`, `first_name`, `last_name`, `email` (unique), `saved_card`,
   `balance_owed`, `created_at`
-- **orders** - `id`, `user_id`, customer name/email snapshot, `product_name`,
-  `sku`, `option_type`, `option_value`, `quantity`, `unit_price`, `total_price`,
-  `image_url`, `product_url`, `note`, `status`, `timestamp`, `main_category`,
-  `sub_category`, `product_type`
+- **orders** - `id`, `user_id`, customer name/email snapshot, `note` (the
+  checkout note), `total_price`, `status`, `timestamp`. One row per checkout.
+- **order_items** - `id`, `order_id`, `product_name`, `sku`, `option_type`,
+  `option_value`, `quantity`, `unit_price`, `total_price`, `image_url`,
+  `product_url`, `note`, `main_category`, `sub_category`, `product_type`. One
+  row per line in the cart.
+
+  Status lives on the order, not the item, so a five-item order is approved once
+  and sends one email. It used to be one row per item, which meant five separate
+  "orders" to update and five emails. Databases created before that change are
+  migrated on first run: rows are regrouped into baskets by `user_id` plus
+  `timestamp`, and the old table is kept as `orders_legacy_backup` rather than
+  dropped.
 - **products** - `id`, `product_url` (unique, the natural key), `sku`, `name`,
   `price`, `in_stock`, `is_visible`, `main_category`, `sub_category`,
   `product_type`, `scent`, `image_url`, `updated_at`, `updated_by`

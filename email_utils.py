@@ -65,7 +65,37 @@ def maybe_send_ball_batch_email(current_count: int) -> None:
 
 
 
+def _format_item_line(item: dict) -> str:
+    quantity = int(item.get('quantity', 1) or 1)
+    name = str(item.get('product_name', '') or '').strip() or 'Item'
+    sku = str(item.get('sku', '') or '').strip()
+    option_type = str(item.get('option_type', '') or '').strip()
+    option_value = str(item.get('option_value', '') or '').strip()
+    line_total = float(item.get('total_price', 0) or 0)
+
+    detail = []
+    if option_type and option_value:
+        detail.append(f'{option_type}: {option_value}')
+    if sku:
+        detail.append(f'SKU {sku}')
+    suffix = f"  ({', '.join(detail)})" if detail else ''
+
+    line = f'  {quantity} x {name}{suffix}  -  ${line_total:,.2f}'
+
+    note = str(item.get('note', '') or '').strip()
+    if note:
+        line += f'\n      Note: {note}'
+    return line
+
+
 def send_order_status_email(order: dict, new_status: str) -> None:
+    """
+    One email for the whole order.
+
+    Orders used to be one row per item, so a five-item order sent five separate
+    emails on every status change. An order now owns its items and this sends a
+    single message listing all of them.
+    """
     if new_status not in {'approved', 'ordered', 'fulfilled'}:
         return
 
@@ -73,26 +103,38 @@ def send_order_status_email(order: dict, new_status: str) -> None:
     if not to_email:
         return
 
-    customer_name = f"{str(order.get('customer_first_name', '')).strip()} {str(order.get('customer_last_name', '')).strip()}".strip()
-    product_name = str(order.get('product_name', 'your order')).strip() or 'your order'
-    quantity = int(order.get('quantity', 1) or 1)
-    option_type = str(order.get('option_type', '') or '').strip()
-    option_value = str(order.get('option_value', '') or '').strip()
+    label = FRIENDLY_STATUS_LABELS.get(new_status, new_status)
+    customer_name = (
+        f"{str(order.get('customer_first_name', '')).strip()} "
+        f"{str(order.get('customer_last_name', '')).strip()}"
+    ).strip()
 
-    option_line = ''
-    if option_type and option_value:
-        option_line = f"\n{option_type}: {option_value}"
+    items = order.get('items') or []
+    unit_count = sum(int(i.get('quantity', 1) or 1) for i in items)
+    order_id = order.get('id')
 
-    subject = f"Your bowling order is now {FRIENDLY_STATUS_LABELS.get(new_status, new_status)}"
+    if items:
+        item_block = '\n'.join(_format_item_line(item) for item in items)
+        heading = f"{unit_count} item{'s' if unit_count != 1 else ''} in this order:"
+    else:
+        item_block = '  (no items recorded)'
+        heading = 'Items:'
+
+    order_note = str(order.get('note', '') or '').strip()
+    note_block = f"\nYour note: {order_note}\n" if order_note else ''
+
+    subject = f"Your bowling order is now {label}"
+    if order_id:
+        subject += f" (order #{order_id})"
+
     body = (
         f"Hi {customer_name or 'there'},\n\n"
-        f"Your order status has been updated to {FRIENDLY_STATUS_LABELS.get(new_status, new_status)}.\n\n"
-        f"Product: {product_name}\n"
-        f"SKU: {str(order.get('sku', '') or '').strip()}\n"
-        f"Quantity: {quantity}"
-        f"{option_line}\n"
-        f"Status: {FRIENDLY_STATUS_LABELS.get(new_status, new_status)}\n"
-        f"Total: ${float(order.get('total_price', 0) or 0):,.2f}\n\n"
+        f"Your order has been updated to {label}.\n\n"
+        f"{heading}\n"
+        f"{item_block}\n"
+        f"{note_block}"
+        f"\nOrder total: ${float(order.get('total_price', 0) or 0):,.2f}\n"
+        f"Status: {label}\n\n"
         f"This is an automatic update from the team bowling order dashboard."
     )
     send_email(subject, body, to_email)
