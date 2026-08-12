@@ -1,2 +1,26 @@
 [server]
+# Serves files under static/ at app/static/..., so product images are fetched
+# and cached by the browser instead of routed through the media manager.
 enableStaticServing = true
+
+[theme]
+# Stevens red. One line to change if you'd rather use Storm's colors.
+primaryColor = "#A32638"
+baseRadius = "0.6rem"
+buttonRadius = "0.5rem"
+showWidgetBorder = true
+showSidebarBorder = true
+
+[theme.light]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F5F7"
+textColor = "#16181D"
+borderColor = "#E3E5EA"
+linkColor = "#8C2031"
+
+[theme.dark]
+backgroundColor = "#14161A"
+secondaryBackgroundColor = "#1D2026"
+textColor = "#ECEDEF"
+borderColor = "#2E323A"
+linkColor = "#F08A99"

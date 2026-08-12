@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from config import CATALOG_CSV, BALL_WEIGHTS, APPAREL_SIZES
-from db import count_products, get_products, upsert_products
+from db import count_products, get_products, record_catalog_import, upsert_products
 
 CATALOG_DISPLAY_COLUMNS = [
     'product_url', 'sku', 'name', 'price', 'in_stock', 'is_visible',
@@ -118,7 +118,9 @@ def rows_from_catalog_csv(df: pd.DataFrame) -> list[dict]:
 
 
 def import_catalog_csv(df: pd.DataFrame, mode: str = 'refresh', updated_by: str = '') -> dict:
-    result = upsert_products(rows_from_catalog_csv(df), mode=mode, updated_by=updated_by)
+    rows = rows_from_catalog_csv(df)
+    result = upsert_products(rows, mode=mode, updated_by=updated_by)
+    record_catalog_import(mode, len(rows), updated_by)
     invalidate_catalog_cache()
     return result
 

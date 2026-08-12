@@ -26,6 +26,28 @@ open **Catalog Manager** in the sidebar.
 Products are rows in the database, so edits are live for everyone immediately and
 survive redeploys.
 
+### How current is the catalog?
+
+Nothing updates it automatically, and that's a deliberate limitation rather than
+an oversight: Storm publishes no price feed, and `storm_scraper.py` drives a real
+browser using a saved logged-in session (`storm_auth_state.json`). That session
+can't be committed, expires periodically, and needs a human to re-create - so a
+scheduled scraper on free hosting would quietly rot rather than keep things
+fresh.
+
+What the app does instead is make staleness impossible to miss:
+
+- The Catalog Manager shows **Last edited** and when a scraper CSV was last
+  imported, by whom, and in which mode.
+- Past `STALE_CATALOG_DAYS` (30 by default, in `catalog_admin.py`) that turns
+  into a warning suggesting a re-scrape.
+- Every product row carries its own **Last edited** date in the grid, so you can
+  sort out which entries nobody has touched since the initial import.
+
+In practice: stock and price corrections you make by hand in the Catalog Manager
+as they come up, and a full re-scrape is worth doing when Storm changes their
+line-up - roughly each season, or whenever the staleness warning appears.
+
 ### Re-scraping the Storm catalog
 
 Only needed when Storm adds or removes products - not for price or stock changes.
@@ -48,6 +70,20 @@ Then upload `storm_products_tagged.csv` in the Catalog Manager's import tab.
 ~1.4 MB each. It converts them to WebP, which took the catalog from 343 MB to
 5 MB with no visible quality loss. Skipping it will make the app slow again.
 It needs Pillow (`pip install Pillow`), which the app itself does not require.
+
+## Look and feel
+
+Colors, corner radius and fonts live in the `[theme]` block of
+`.streamlit/config.toml` - the primary color is Stevens red, and changing it is
+one line. The catalog renders as a 3-column grid (`CATALOG_COLUMNS` in `app.py`)
+with size/quantity/note tucked into a popover behind each *Add to cart*, which
+keeps tiles compact. Columns collapse to a single stack on phones automatically.
+
+The small amount of custom CSS in `app.py` (`CATALOG_CSS`) is deliberately
+limited to typography and fixed-height blocks. Square images plus a two-line
+clamp on product names make tiles in a row match height on their own, so there's
+nothing targeting Streamlit's generated `st-emotion-cache-*` class names, which
+change between releases.
 
 ## File structure
 

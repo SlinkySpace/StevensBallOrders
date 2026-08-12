@@ -6,6 +6,8 @@ stock and visibility are rows in the database, so a change here is live for
 everyone on their next page load.
 """
 
+from datetime import datetime
+
 import pandas as pd
 import streamlit as st
 
@@ -20,6 +22,7 @@ from db import (
     EDITABLE_PRODUCT_COLUMNS,
     count_products,
     delete_products,
+    get_catalog_freshness,
     set_products_stock,
     update_products,
     upsert_products,
@@ -27,9 +30,12 @@ from db import (
 
 PRODUCT_TYPES = ['bowling_ball', 'apparel', 'general']
 
+# How long before an un-reimported catalog is worth flagging.
+STALE_CATALOG_DAYS = 30
+
 EDITOR_COLUMNS = [
     'image_url', 'name', 'sku', 'price', 'in_stock', 'is_visible',
-    'main_category', 'sub_category', 'product_type', 'product_url',
+    'main_category', 'sub_category', 'product_type', 'updated_at', 'product_url',
 ]
 
 IMPORT_MODES = {
@@ -54,6 +60,7 @@ def _editor_frame(df: pd.DataFrame) -> pd.DataFrame:
     frame['in_stock'] = frame['in_stock'].astype(bool)
     frame['is_visible'] = frame['is_visible'].astype(bool)
     frame['image_url'] = frame['image_url'].map(_image_column_url)
+    frame['updated_at'] = pd.to_datetime(frame['updated_at'], errors='coerce')
     return frame.reset_index(drop=True)
 
 
@@ -173,9 +180,12 @@ def _render_editor_tab(admin_email: str) -> None:
                     'general -> none'
                 ),
             ),
+            'updated_at': st.column_config.DatetimeColumn(
+                'Last edited', width='small', format='MMM D, YYYY'
+            ),
             'product_url': st.column_config.LinkColumn('Storm page', width='small'),
         },
-        disabled=['image_url', 'product_url'],
+        disabled=['image_url', 'updated_at', 'product_url'],
     )
 
     updates = _diff_rows(original, edited)
@@ -362,6 +372,60 @@ def _render_add_tab(admin_email: str) -> None:
         st.rerun()
 
 
+def _humanize_age(timestamp: str) -> tuple[str, int]:
+    """Return a friendly age like '3 days ago' plus the age in days."""
+    try:
+        moment = datetime.fromisoformat(str(timestamp))
+    except (TypeError, ValueError):
+        return 'unknown', 10**6
+
+    delta = datetime.now() - moment
+    days = max(delta.days, 0)
+    if days == 0:
+        hours = delta.seconds // 3600
+        if hours == 0:
+            return 'just now', 0
+        return f'{hours} hour{"s" if hours != 1 else ""} ago', 0
+    if days == 1:
+        return 'yesterday', 1
+    if days < 30:
+        return f'{days} days ago', days
+    months = days // 30
+    return f'about {months} month{"s" if months != 1 else ""} ago', days
+
+
+def render_freshness(freshness: dict) -> None:
+    """
+    Nothing keeps the catalog current automatically - Storm has no feed and the
+    scraper needs a logged-in browser session. So make staleness visible instead
+    of letting it pass unnoticed.
+    """
+    last_import = freshness.get('last_import') or {}
+    imported_at = last_import.get('at')
+
+    if not imported_at:
+        st.info(
+            'No scraper CSV has been imported yet. Prices and stock are whatever '
+            'the catalog was seeded with.'
+        )
+        return
+
+    label, days = _humanize_age(imported_at)
+    detail = f"Catalog last imported **{label}**"
+    if last_import.get('by'):
+        detail += f" by {last_import['by']}"
+    detail += f" ({last_import.get('count', '?')} products, {last_import.get('mode', '?')} mode)."
+
+    if days >= STALE_CATALOG_DAYS:
+        st.warning(
+            f"{detail} Storm may have changed prices or dropped products since then - "
+            'worth re-running the scraper. Day-to-day stock changes you can just '
+            'make below.'
+        )
+    else:
+        st.caption(detail)
+
+
 def render_catalog_manager(admin_email: str = '') -> None:
     st.header('Catalog Manager')
 
@@ -369,11 +433,16 @@ def render_catalog_manager(admin_email: str = '') -> None:
     df = load_catalog(admin_view=True)
     in_stock = int(df['in_stock'].astype(bool).sum()) if not df.empty else 0
     visible = int(df['is_visible'].astype(bool).sum()) if not df.empty else 0
+    freshness = get_catalog_freshness()
 
-    m1, m2, m3 = st.columns(3)
+    m1, m2, m3, m4 = st.columns(4)
     m1.metric('Products', total)
     m2.metric('In stock', in_stock)
     m3.metric('Visible to shoppers', visible)
+    last_change, _ = _humanize_age(freshness.get('last_product_change'))
+    m4.metric('Last edited', last_change)
+
+    render_freshness(freshness)
 
     products_tab, import_tab, add_tab = st.tabs(
         ['Products', 'Import from scraper CSV', 'Add / remove']

@@ -48,18 +48,62 @@ from db import (
     update_saved_card,
 )
 
-st.set_page_config(page_title=APP_TITLE, layout='wide')
+st.set_page_config(page_title=APP_TITLE, layout='wide', page_icon='🎳')
 init_db()
 init_session_state()
 refresh_user_session()
 
 ORDER_STATUS_OPTIONS = ['submitted', 'approved', 'ordered', 'fulfilled', 'cancelled']
-CATALOG_ITEMS_PER_PAGE = 25
+CATALOG_COLUMNS = 3
+CATALOG_ITEMS_PER_PAGE = 24  # a multiple of CATALOG_COLUMNS, so rows stay full
 PLACEHOLDER_IMAGE = (
-    "<div style='width:100%;aspect-ratio:1;display:flex;align-items:center;"
-    "justify-content:center;background:rgba(128,128,128,0.08);border-radius:8px;"
-    "color:rgba(128,128,128,0.7);font-size:0.8rem;'>No image</div>"
+    "<div class='product-image product-image--empty'>No image</div>"
 )
+
+# Typography and fixed-height blocks only. Square images plus a two-line clamp on
+# the name make tiles in a row the same height on their own, so there's no
+# flexbox targeting Streamlit's generated class names to break on an upgrade.
+CATALOG_CSS = """
+<style>
+.product-image {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: contain;
+    border-radius: 0.5rem;
+    background: rgba(128, 128, 128, 0.05);
+}
+.product-image--empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(128, 128, 128, 0.7);
+    font-size: 0.8rem;
+}
+.product-name {
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 0.6rem 0 0.15rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.6em;
+}
+.product-price {
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.product-meta {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin-bottom: 0.5rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+</style>
+"""
 
 
 def currency(value: float) -> str:
@@ -108,11 +152,10 @@ def show_image(image_value: str, alt: str = '') -> None:
         st.markdown(PLACEHOLDER_IMAGE, unsafe_allow_html=True)
         return
 
-    # loading="lazy" means a 25-product page only fetches what's on screen.
+    # loading="lazy" means a page of products only fetches what's on screen.
     st.markdown(
-        f"<img src='{html.escape(src, quote=True)}' alt='{html.escape(alt, quote=True)}' "
-        f"loading='lazy' decoding='async' "
-        f"style='width:100%;height:auto;border-radius:8px;' />",
+        f"<img class='product-image' src='{html.escape(src, quote=True)}' "
+        f"alt='{html.escape(alt, quote=True)}' loading='lazy' decoding='async' />",
         unsafe_allow_html=True,
     )
 
@@ -247,79 +290,119 @@ def render_auth_page():
 
 def render_sidebar():
     user = get_current_user()
-    st.sidebar.title('Navigation')
-    st.sidebar.write(f"Logged in as **{user['first_name']} {user['last_name']}**")
-    st.sidebar.write(user['email'])
+    cart = st.session_state.get('cart', [])
+    cart_count = sum(int(item.get('quantity', 1)) for item in cart)
+    cart_total = sum(float(i['unit_price']) * int(i['quantity']) for i in cart)
 
-    cart_count = sum(int(item.get('quantity', 1)) for item in st.session_state.get('cart', []))
-    st.sidebar.metric('Cart items', cart_count)
-    if st.sidebar.button('Logout'):
+    st.sidebar.markdown(f"### 🎳 {APP_TITLE}")
+    st.sidebar.caption(
+        f"{user['first_name']} {user['last_name']} · {user['email']}"
+    )
+
+    # Balance is the number people actually care about, so lead with it.
+    balance = float(user.get('balance_owed') or 0)
+    if balance > 0:
+        st.sidebar.metric('You owe', currency(balance))
+
+    pages = {
+        'Catalog': '🎳  Catalog',
+        'Cart': f'🛒  Cart ({cart_count})' if cart_count else '🛒  Cart',
+        'Checkout': '✅  Checkout',
+        'Outstanding Orders': '📦  Outstanding Orders',
+        'Order History': '🕘  Order History',
+        'Profile': '👤  Profile',
+    }
+    if is_admin():
+        pages['Owner Dashboard'] = '📊  Owner Dashboard'
+        pages['Catalog Manager'] = '🗂️  Catalog Manager'
+
+    # Keyed, so the selected page survives the st.rerun() that follows actions
+    # like emptying the cart or applying a status. Without it the nav snapped
+    # back to Catalog every time.
+    choice = st.sidebar.radio(
+        'Go to',
+        list(pages),
+        format_func=lambda page: pages[page],
+        label_visibility='collapsed',
+        key='nav_page',
+    )
+
+    if cart_count:
+        st.sidebar.caption(f'Cart total: {currency(cart_total)}')
+
+    st.sidebar.divider()
+    if st.sidebar.button('Log out', use_container_width=True):
         st.session_state['catalog_page_number'] = 1
         logout_user()
         st.rerun()
 
-    base_pages = ['Catalog', 'Cart', 'Checkout', 'Profile', 'Outstanding Orders', 'Order History']
-    if is_admin():
-        base_pages += ['Owner Dashboard', 'Catalog Manager']
-    return st.sidebar.radio('Go to', base_pages)
+    return choice
+
+
+def _default_option_index(product_type: str, options: list) -> int:
+    """Bowling balls default to 15 lb, everything else to the first option."""
+    if product_type == 'bowling_ball':
+        for i, opt in enumerate(options):
+            if ''.join(ch for ch in str(opt) if ch.isdigit()) == '15':
+                return i
+    return 0
 
 
 @st.fragment
 def render_product_card(row: dict, row_key: str):
     """
-    One product card.
+    One product tile in the catalog grid.
 
-    Marked as a fragment so changing quantity, size or the note reruns just this
-    card instead of the whole 25-product page.
+    A fragment, so picking a weight or changing a quantity reruns this one tile
+    rather than re-rendering the whole page of products.
     """
+    name = str(row['name'])
+    price = float(row['price_value'])
+    scent = str(row.get('scent', '') or '').strip()
+    is_ball = row.get('product_type') == 'bowling_ball'
+
     with st.container(border=True):
-        left, right = st.columns([1, 2])
-        with left:
-            show_image(row.get('image_url'), alt=str(row.get('name', '')))
-        with right:
-            st.subheader(str(row['name']))
-            st.write(f"**Price:** {currency(float(row['price_value']))}")
-            st.write(f"**SKU:** {str(row['sku']) or 'N/A'}")
+        show_image(row.get('image_url'), alt=name)
 
-            scent = str(row.get('scent', '') or '').strip()
-            if row.get('product_type') == 'bowling_ball' and scent and scent.lower() != 'none':
-                st.write(f"**Scent:** {scent}")
+        st.markdown(
+            f"<div class='product-name' title=\"{html.escape(name, quote=True)}\">"
+            f"{html.escape(name)}</div>"
+            f"<div class='product-price'>{currency(price)}</div>"
+            f"<div class='product-meta'>{html.escape(str(row['sku']) or 'No SKU')}</div>",
+            unsafe_allow_html=True,
+        )
 
-            product_url = str(row.get('product_url', '')).strip()
-            if product_url.startswith(('http://', 'https://')):
-                st.markdown(f"[Open Storm product page]({product_url})")
+        option_config = get_option_config(row['product_type'])
 
-            option_config = get_option_config(row['product_type'])
+        with st.popover('Add to cart', use_container_width=True):
+            st.markdown(f"**{name}**")
+            st.caption(currency(price) + (f" · {scent}" if is_ball and scent and scent.lower() != 'none' else ''))
+
             option_value = ''
-
             if option_config['options']:
                 options = option_config['options']
-                default_index = 0
-
-                if row['product_type'] == 'bowling_ball':
-                    for i, opt in enumerate(options):
-                        digits = ''.join(ch for ch in str(opt) if ch.isdigit())
-                        if digits == '15':
-                            default_index = i
-                            break
-
                 option_value = st.selectbox(
                     option_config['option_type'],
                     options,
-                    index=default_index,
+                    index=_default_option_index(row['product_type'], options),
                     key=f"opt_{row_key}",
                 )
 
             quantity = st.number_input(
                 'Quantity', min_value=1, max_value=20, value=1, step=1, key=f"qty_{row_key}"
             )
-            note = st.text_input('Order note (optional)', key=f"note_{row_key}")
+            note = st.text_input('Note (optional)', key=f"note_{row_key}")
 
-            if st.button('Add to cart', key=f"add_{row_key}"):
+            product_url = str(row.get('product_url', '')).strip()
+            if product_url.startswith(('http://', 'https://')):
+                st.markdown(f"[View on stormbowling.com]({product_url})")
+
+            if st.button('Add to cart', key=f"add_{row_key}", type='primary',
+                         use_container_width=True):
                 add_to_cart({
-                    'name': str(row['name']),
+                    'name': name,
                     'sku': str(row['sku']),
-                    'unit_price': float(row['price_value']),
+                    'unit_price': price,
                     'image_url': str(row['image_url']),
                     'product_url': str(row['product_url']),
                     'option_type': option_config['option_type'],
@@ -329,15 +412,15 @@ def render_product_card(row: dict, row_key: str):
                     'main_category': str(row['main_category']),
                     'sub_category': str(row['sub_category']),
                     'product_type': str(row['product_type']),
-                    'scent': scent if row.get('product_type') == 'bowling_ball' else '',
+                    'scent': scent if is_ball else '',
                 })
-                st.toast(f"Added {row['name']} to cart.")
+                st.toast(f'Added {name} to cart.', icon='🎳')
                 # Full rerun so the sidebar cart count keeps up.
                 st.rerun(scope='app')
 
 
 def render_catalog_page():
-    st.header('Product Dashboard')
+    st.title('Catalog')
     df = load_catalog()
 
     if df.empty:
@@ -348,65 +431,71 @@ def render_catalog_page():
 
     main_options, sub_options = get_filter_options(df)
 
-    c1, c2, c3 = st.columns([1, 1, 2])
+    c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
-        selected_main = st.selectbox('Main category', main_options)
+        search = st.text_input(
+            'Search', placeholder='Search by product name or SKU', label_visibility='collapsed'
+        )
     with c2:
-        selected_sub = st.selectbox('Sub category', sub_options)
+        selected_main = st.selectbox('Main category', main_options, label_visibility='collapsed')
     with c3:
-        search = st.text_input('Search by product name or SKU')
+        selected_sub = st.selectbox('Sub category', sub_options, label_visibility='collapsed')
 
     filtered = filter_catalog(df, search, selected_main, selected_sub)
 
     total_items = len(filtered)
+    if total_items == 0:
+        st.warning('No products match those filters.')
+        return
+
     total_pages = max(1, (total_items + CATALOG_ITEMS_PER_PAGE - 1) // CATALOG_ITEMS_PER_PAGE)
     current_page = ensure_catalog_page_valid(total_pages)
 
-    top_left, top_right = st.columns([2, 1])
-    with top_left:
-        st.caption(f'{total_items} products shown')
-    with top_right:
-        page_number = st.number_input(
-            'Catalog page', min_value=1, max_value=total_pages, value=current_page, step=1
-        )
-        current_page = int(page_number)
-        st.session_state['catalog_page_number'] = current_page
-
     start_idx = (current_page - 1) * CATALOG_ITEMS_PER_PAGE
-    end_idx = start_idx + CATALOG_ITEMS_PER_PAGE
+    end_idx = min(start_idx + CATALOG_ITEMS_PER_PAGE, total_items)
     page_df = filtered.iloc[start_idx:end_idx]
 
-    if total_items > 0:
-        st.caption(f'Showing products {start_idx + 1} to {min(end_idx, total_items)} of {total_items}')
-    else:
-        st.caption('Showing 0 products')
+    st.caption(
+        f'Showing {start_idx + 1}-{end_idx} of {total_items} products'
+        + (f' · page {current_page} of {total_pages}' if total_pages > 1 else '')
+    )
 
-    for _, row in page_df.iterrows():
-        # product_url is unique per product, so widget keys stay stable across
-        # reruns even as filters and pagination change what's on screen.
-        render_product_card(row.to_dict(), str(row['product_url']))
+    # Lay the page out as rows of CATALOG_COLUMNS tiles.
+    rows = list(page_df.iterrows())
+    for offset in range(0, len(rows), CATALOG_COLUMNS):
+        columns = st.columns(CATALOG_COLUMNS, gap='medium')
+        for column, (_, row) in zip(columns, rows[offset:offset + CATALOG_COLUMNS]):
+            with column:
+                # product_url is unique per product, so widget keys stay stable
+                # across reruns even as filters and pagination change the view.
+                render_product_card(row.to_dict(), str(row['product_url']))
 
-    nav_left, nav_center, nav_right = st.columns([1, 2, 1])
-    with nav_left:
-        if st.button('← Previous', disabled=current_page <= 1, key='catalog_prev_bottom'):
-            st.session_state['catalog_page_number'] = max(1, current_page - 1)
-            st.rerun()
-    with nav_center:
-        st.markdown(
-            f"<div style='text-align:center; padding-top:0.5rem;'>Page {current_page} of {total_pages}</div>",
-            unsafe_allow_html=True,
-        )
-    with nav_right:
-        if st.button('Next →', disabled=current_page >= total_pages, key='catalog_next_bottom'):
-            st.session_state['catalog_page_number'] = min(total_pages, current_page + 1)
-            st.rerun()
+    if total_pages > 1:
+        st.divider()
+        nav_left, nav_center, nav_right = st.columns([1, 2, 1])
+        with nav_left:
+            if st.button('← Previous', disabled=current_page <= 1,
+                         key='catalog_prev_bottom', use_container_width=True):
+                st.session_state['catalog_page_number'] = max(1, current_page - 1)
+                st.rerun()
+        with nav_center:
+            st.markdown(
+                f"<div style='text-align:center;padding-top:0.45rem;opacity:0.7;'>"
+                f"Page {current_page} of {total_pages}</div>",
+                unsafe_allow_html=True,
+            )
+        with nav_right:
+            if st.button('Next →', disabled=current_page >= total_pages,
+                         key='catalog_next_bottom', use_container_width=True):
+                st.session_state['catalog_page_number'] = min(total_pages, current_page + 1)
+                st.rerun()
 
 
 def render_cart_page():
-    st.header('Cart')
+    st.title('Cart')
     ensure_cart()
     if not st.session_state['cart']:
-        st.info('Your cart is empty.')
+        st.info('Your cart is empty. Head to the Catalog to add something.')
         return
 
     total = 0.0
@@ -415,7 +504,7 @@ def render_cart_page():
 
     for idx, item in enumerate(st.session_state['cart']):
         with st.container(border=True):
-            left, right = st.columns([1, 2])
+            left, right = st.columns([1, 4])
             with left:
                 show_image(item.get('image_url'), alt=str(item.get('name', '')))
             with right:
@@ -474,11 +563,20 @@ def render_cart_page():
     if cart_changed:
         persist_cart()
 
-    st.metric('Cart total', currency(total))
+    st.divider()
+    left, right = st.columns([2, 1])
+    with left:
+        st.metric('Cart total', currency(total))
+    with right:
+        if st.button('Empty cart', use_container_width=True):
+            st.session_state['cart'] = []
+            persist_cart()
+            st.toast('Cart emptied.')
+            st.rerun()
 
 
 def render_checkout_page():
-    st.header('Checkout')
+    st.title('Checkout')
     ensure_cart()
     if not st.session_state['cart']:
         st.info('Add items to your cart before checkout.')
@@ -510,7 +608,7 @@ def render_checkout_page():
 
 
 def render_profile_page():
-    st.header('Profile')
+    st.title('Profile')
     user = get_current_user()
     outstanding = get_orders_for_user(user['id'], ACTIVE_ORDER_STATUSES)
     fulfilled = get_orders_for_user(user['id'], COMPLETED_ORDER_STATUSES)
@@ -550,32 +648,71 @@ def render_profile_page():
                 st.error(error)
 
 
+ORDER_TABLE_COLUMNS = [
+    'timestamp', 'product_name', 'sku', 'option_value',
+    'quantity', 'total_price', 'status', 'note',
+]
+
+ORDER_COLUMN_CONFIG = {
+    'timestamp': st.column_config.DatetimeColumn('Ordered', format='MMM D, YYYY h:mm a'),
+    'product_name': st.column_config.TextColumn('Product', width='large'),
+    'sku': st.column_config.TextColumn('SKU', width='small'),
+    'option_value': st.column_config.TextColumn('Option', width='small'),
+    'quantity': st.column_config.NumberColumn('Qty', width='small'),
+    'total_price': st.column_config.NumberColumn('Total', format='$%.2f'),
+    'status': st.column_config.TextColumn('Status', width='small'),
+    'note': st.column_config.TextColumn('Note', width='medium'),
+}
+
+
 def _orders_dataframe(rows):
     if not rows:
-        return pd.DataFrame(columns=['timestamp', 'product_name', 'sku', 'option_value', 'quantity', 'total_price', 'status', 'note'])
+        return pd.DataFrame(columns=ORDER_TABLE_COLUMNS)
     return pd.DataFrame([{k: row[k] for k in row.keys()} for row in rows])
 
 
+def _render_orders_table(rows):
+    df = _orders_dataframe(rows)[ORDER_TABLE_COLUMNS].copy()
+    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config=ORDER_COLUMN_CONFIG,
+    )
+
+
 def render_outstanding_orders_page():
-    st.header('Outstanding Orders')
+    st.title('Outstanding Orders')
     user = get_current_user()
     rows = get_orders_for_user(user['id'], ACTIVE_ORDER_STATUSES)
     if not rows:
         st.info('No active orders right now.')
         return
-    df = _orders_dataframe(rows)[['timestamp', 'product_name', 'sku', 'option_value', 'quantity', 'total_price', 'status', 'note']]
-    st.dataframe(df, use_container_width=True)
+
+    outstanding_total = sum(float(row['total_price'] or 0) for row in rows)
+    c1, c2 = st.columns(2)
+    c1.metric('Active orders', len(rows))
+    c2.metric('Value of active orders', currency(outstanding_total))
+    _render_orders_table(rows)
 
 
 def render_order_history_page():
-    st.header('Fulfilled Orders / History')
+    st.title('Order History')
     user = get_current_user()
     rows = get_orders_for_user(user['id'])
     if not rows:
         st.info('No order history yet.')
         return
-    df = _orders_dataframe(rows)[['timestamp', 'product_name', 'sku', 'option_value', 'quantity', 'total_price', 'status', 'note']]
-    st.dataframe(df, use_container_width=True)
+
+    st.caption(f'{len(rows)} order(s), all statuses.')
+    _render_orders_table(rows)
+    st.download_button(
+        'Download my orders (CSV)',
+        data=_orders_dataframe(rows)[ORDER_TABLE_COLUMNS].to_csv(index=False).encode('utf-8'),
+        file_name='my_bowling_orders.csv',
+        mime='text/csv',
+    )
 
 
 def render_security_notices(users):
@@ -602,7 +739,7 @@ def render_security_notices(users):
 
 
 def render_owner_dashboard():
-    st.header('Owner Dashboard')
+    st.title('Owner Dashboard')
 
     filter_col1, filter_col2 = st.columns([2, 1])
     with filter_col1:
@@ -735,6 +872,8 @@ def render_main_app():
         user = get_current_user() or {}
         render_catalog_manager(str(user.get('email', '')))
 
+
+st.markdown(CATALOG_CSS, unsafe_allow_html=True)
 
 if not is_logged_in():
     render_auth_page()

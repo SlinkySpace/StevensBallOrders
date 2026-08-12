@@ -861,6 +861,44 @@ def delete_products(product_urls: Iterable[str]) -> int:
     return len(urls)
 
 
+CATALOG_LAST_IMPORT_KEY = 'catalog_last_import'
+
+
+def record_catalog_import(mode: str, count: int, updated_by: str = '') -> None:
+    _set_app_state(
+        CATALOG_LAST_IMPORT_KEY,
+        json.dumps({'at': now_iso(), 'mode': mode, 'count': count, 'by': updated_by}),
+    )
+
+
+def get_catalog_freshness() -> dict:
+    """
+    Signals for how current the catalog is: when a product last changed, and
+    when a scraper CSV was last imported.
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT MAX(updated_at) AS newest, COUNT(*) AS total FROM products"
+        ).fetchone()
+        state = conn.execute(
+            f"SELECT value FROM app_state WHERE key = {_placeholder()}",
+            (CATALOG_LAST_IMPORT_KEY,),
+        ).fetchone()
+
+    last_import = None
+    if state:
+        try:
+            last_import = json.loads(state['value'])
+        except Exception:
+            last_import = None
+
+    return {
+        'last_product_change': row['newest'] if row else None,
+        'total_products': int(row['total'] or 0) if row else 0,
+        'last_import': last_import,
+    }
+
+
 def get_owner_dashboard_data(statuses: Optional[Iterable[str]] = None) -> dict:
     """
     Everything the owner dashboard renders, on a single connection.
