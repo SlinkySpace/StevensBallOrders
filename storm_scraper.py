@@ -154,6 +154,10 @@ def extract_best_image_url(img_locator) -> str:
 # moment anything shifted the DOM - the cookie consent banner alone was enough.
 EXTRACT_LISTING_ITEMS_JS = """
 () => {
+  // A container needs at least this many link-plus-image cells to count as the
+  // product grid, which keeps small image menus from being mistaken for it.
+  const MIN_GRID_CELLS = 4;
+
   const NON_PRODUCT_ROOTS = new Set([
     'products','company','events','community','cart','account','login','register',
     'logout','search','contact','about','news','blog','dealers','sitemap',
@@ -211,29 +215,40 @@ EXTRACT_LISTING_ITEMS_JS = """
     return '';
   };
 
-  // Scanning the whole document was far too greedy: a first attempt pulled 805
-  // nav and content pages (about-storm-products, ball-compare, ...) alongside
-  // 82 real ones, because they are also single hyphenated slugs.
+  // Finding the grid by its /products/ links failed on whole categories: every
+  // bowling ball has moved to a root-level URL, so those listing pages contain
+  // no /products/<main>/<sub>/<slug> link at all, no grid was recognised, and
+  // the page came back empty. Ten of nineteen pages, and every ball, were lost.
   //
-  // So locate the product grid first, using only the unambiguous
-  // /products/<main>/<sub>/<slug> links, then read root-level products from
-  // inside that container. Site navigation lives outside it.
+  // Identify it by shape instead. A product card is a link with a thumbnail;
+  // navigation and footer links are not. Whichever container holds the most
+  // link-plus-image cells is the grid, whatever the URLs inside it look like.
   const anchors = [...document.querySelectorAll('a[href]')];
   const strict = anchors.filter(a => isCatalogPath(a.getAttribute('href')));
 
   const tally = new Map();
-  for (const a of strict) {
+  for (const a of anchors) {
     const cell = a.closest('li') || a.parentElement;
-    const container = cell ? cell.parentElement : null;
-    if (container) tally.set(container, (tally.get(container) || 0) + 1);
+    if (!cell || !cell.querySelector('img')) continue;
+    const container = cell.parentElement;
+    if (!container) continue;
+    const seen = tally.get(container) || { cells: new Set(), products: 0 };
+    seen.cells.add(cell);
+    if (isProduct(a.getAttribute('href'))) seen.products += 1;
+    tally.set(container, seen);
   }
-  const grid = [...tally.entries()].sort((x, y) => y[1] - x[1])[0];
+
+  // Prefer the container holding the most product links, then the most cards,
+  // so a small image-bearing menu cannot outrank the real grid.
+  const ranked = [...tally.entries()]
+    .filter(([, v]) => v.cells.size >= MIN_GRID_CELLS && v.products > 0)
+    .sort((x, y) => (y[1].products - x[1].products) || (y[1].cells.size - x[1].cells.size));
+  const grid = ranked.length ? ranked[0][0] : null;
 
   // Without a recognisable grid, take only the unambiguous links so navigation
   // can never leak in.
-  const scope = grid ? grid[0] : document;
   const candidates = grid
-    ? [...scope.querySelectorAll('a[href]')].filter(a => isProduct(a.getAttribute('href')))
+    ? [...grid.querySelectorAll('a[href]')].filter(a => isProduct(a.getAttribute('href')))
     : strict;
 
   const seen = new Set();

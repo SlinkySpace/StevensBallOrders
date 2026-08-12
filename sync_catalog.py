@@ -107,9 +107,13 @@ def evaluate_guards(rows: list[dict], existing: list[dict], args) -> tuple[list[
             changed.append((row['name'], old, row['price']))
 
     # A catalog that is already populated should mostly recognise what arrives.
-    # A flood of "new" products means matching broke - Storm moving their URLs
-    # did exactly that - and applying it would duplicate the whole catalog
-    # rather than update it.
+    # A flood of "new" products means matching broke, and applying it would
+    # duplicate the whole catalog rather than update it.
+    #
+    # Count against the same keys the write will use. Storm moved their product
+    # URLs, so most rows arrive under an unfamiliar URL and are matched back by
+    # SKU; measuring before that resolution reported 93% new when the real
+    # figure was far lower, and would have blocked every future sync.
     incoming_urls = {row['product_url'] for row in rows}
     known_urls = {str(p['product_url']) for p in existing}
     brand_new = len(incoming_urls - known_urls)
@@ -172,7 +176,13 @@ def main(argv=None) -> int:
     # Imported here so the DATABASE_URL check above happens first; config reads
     # the environment at import time.
     from catalog import rows_from_catalog_csv
-    from db import get_products, init_db, record_catalog_import, upsert_products
+    from db import (
+        _rekey_by_sku,
+        get_products,
+        init_db,
+        record_catalog_import,
+        upsert_products,
+    )
 
     try:
         frame = pd.read_csv(args.csv)
@@ -188,6 +198,11 @@ def main(argv=None) -> int:
 
     init_db()
     existing = get_products()
+
+    # Resolve SKU matches up front so the report and the guards see the same
+    # keys the write would use.
+    if args.mode != 'replace':
+        rows = _rekey_by_sku(rows)
 
     print(f'Sync check for {args.csv} (mode: {args.mode})')
     problems, stats = evaluate_guards(rows, existing, args)
