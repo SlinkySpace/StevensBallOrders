@@ -31,6 +31,24 @@ function Write-Step($n, $text) { Write-Host "`n[$n] $text" -ForegroundColor Cyan
 function Write-Ok($text)       { Write-Host "    OK  $text" -ForegroundColor Green }
 function Write-Warn2($text)    { Write-Host "    !   $text" -ForegroundColor Yellow }
 
+function Invoke-Native {
+    <#
+        Runs a command line and returns its combined output as plain strings,
+        with the exit code in $script:LastNativeExit.
+
+        The redirection happens inside cmd rather than PowerShell on purpose.
+        In PowerShell 5.1, "somecommand 2>&1" wraps every stderr line in an
+        ErrorRecord, and with $ErrorActionPreference = 'Stop' that becomes a
+        terminating NativeCommandError - so a command merely *mentioning*
+        something on stderr kills the script. Letting cmd merge the streams
+        avoids that entirely.
+    #>
+    param([string]$CommandLine)
+    $output = cmd /c "$CommandLine 2>&1"
+    $script:LastNativeExit = $LASTEXITCODE
+    return @($output)
+}
+
 # Always operate from the project root, whatever directory the user invoked from.
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
@@ -52,16 +70,45 @@ if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
 }
 Write-Ok 'python is on PATH'
 
-# --- 1. Workflow scope ------------------------------------------------------
-Write-Step 1 'Checking the GitHub token can push workflow files'
+# --- 1. Signed in? ----------------------------------------------------------
+Write-Step 1 'Checking you are signed in to GitHub'
 
-$scopes = (gh auth status 2>&1 | Select-String 'Token scopes').ToString()
+$status = Invoke-Native 'gh auth status'
+if ($script:LastNativeExit -ne 0) {
+    Write-Warn2 'gh is not signed in on this shell.'
+    $status | ForEach-Object { Write-Host "        $_" }
+    Write-Host ''
+    Write-Host '        A browser will open so you can sign in.'
+    Read-Host  '        Press Enter to run: gh auth login'
+
+    gh auth login --hostname github.com --git-protocol https --web --scopes workflow
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '    Sign-in failed or was cancelled.' -ForegroundColor Red
+        exit 1
+    }
+
+    $status = Invoke-Native 'gh auth status'
+    if ($script:LastNativeExit -ne 0) {
+        Write-Host '    Still not signed in. Try "gh auth login" on its own first.' -ForegroundColor Red
+        exit 1
+    }
+}
+$account = ($status | Select-String 'Logged in to' | Select-Object -First 1)
+Write-Ok ($(if ($account) { $account.ToString().Trim() } else { 'signed in' }))
+
+# --- 2. Workflow scope ------------------------------------------------------
+Write-Step 2 'Checking the token can push workflow files'
+
+$scopeLine = $status | Select-String 'Token scopes' | Select-Object -First 1
+$scopes = if ($scopeLine) { $scopeLine.ToString() } else { '' }
+
 if ($scopes -match 'workflow') {
     Write-Ok 'token already has workflow scope'
 }
 else {
     Write-Warn2 'token is missing the workflow scope, which GitHub requires to'
     Write-Host  '        create .github/workflows files.'
+    if ($scopes) { Write-Host "        current: $($scopes.Trim())" }
     Write-Host  '        A browser will open. Approve the request, then come back here.'
     Write-Host  ''
     Read-Host  '        Press Enter to continue'
@@ -69,13 +116,22 @@ else {
     gh auth refresh -h github.com -s workflow
     if ($LASTEXITCODE -ne 0) {
         Write-Host '    Scope refresh failed or was cancelled.' -ForegroundColor Red
+        Write-Host '    You can also run it yourself:' -ForegroundColor Red
+        Write-Host '        gh auth refresh -h github.com -s workflow' -ForegroundColor Red
+        exit 1
+    }
+
+    $recheck = Invoke-Native 'gh auth status'
+    $line = $recheck | Select-String 'Token scopes' | Select-Object -First 1
+    if ($line -and $line.ToString() -notmatch 'workflow') {
+        Write-Host '    Scope still missing. Close and reopen PowerShell, then re-run.' -ForegroundColor Red
         exit 1
     }
     Write-Ok 'workflow scope granted'
 }
 
-# --- 2. Storm login session -------------------------------------------------
-Write-Step 2 'Checking for a saved stormbowling.com session'
+# --- 3. Storm login session -------------------------------------------------
+Write-Step 3 'Checking for a saved stormbowling.com session'
 
 if (Test-Path 'storm_auth_state.json') {
     $size = (Get-Item 'storm_auth_state.json').Length
@@ -105,10 +161,14 @@ else {
     Write-Ok 'session saved'
 }
 
-# --- 3. Repository secrets --------------------------------------------------
-Write-Step 3 'Setting the Actions secrets'
+# --- 4. Repository secrets --------------------------------------------------
+Write-Step 4 'Setting the Actions secrets'
 
-$existing = @(gh secret list -R $repo --json name --jq '.[].name' 2>$null)
+$existing = @(Invoke-Native "gh secret list -R $repo --json name --jq "".[].name""")
+if ($script:LastNativeExit -ne 0) {
+    Write-Warn2 'could not list existing secrets; will set both regardless'
+    $existing = @()
+}
 
 if ($existing -contains 'DATABASE_URL') {
     Write-Ok 'DATABASE_URL already set (re-run with it deleted to replace)'
@@ -137,10 +197,10 @@ gh secret list -R $repo
 
 # --- 4. Push ----------------------------------------------------------------
 if ($SkipPush) {
-    Write-Step 4 'Skipping push (-SkipPush given)'
+    Write-Step 5 'Skipping push (-SkipPush given)'
 }
 else {
-    Write-Step 4 'Pushing the workflow'
+    Write-Step 5 'Pushing the workflow'
     git push origin main
     if ($LASTEXITCODE -ne 0) {
         Write-Host '    Push failed. If it still mentions workflow scope, close and' -ForegroundColor Red
