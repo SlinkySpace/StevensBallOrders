@@ -252,6 +252,9 @@ EXTRACT_LISTING_ITEMS_JS = """
 
 LOGGED_OUT_MARKERS = ('register', 'login', 'sign in')
 
+# How many times to re-read a listing page before accepting that it is empty.
+LISTING_ATTEMPTS = 3
+
 
 def dismiss_cookie_banner(page) -> None:
     """
@@ -368,14 +371,33 @@ def collect_listing_items(page, listing_url: str):
     page.wait_for_timeout(1200)
 
     dismiss_cookie_banner(page)
-    scroll_listing_page(page)
-    page.wait_for_timeout(1200)
 
-    try:
-        found = page.evaluate(EXTRACT_LISTING_ITEMS_JS)
-    except Exception as exc:
-        print(f"[WARN] Could not read products from {listing_url}: {exc}")
-        return []
+    # The grid arrives after the initial HTML. Reading too early returned
+    # nothing for half the listing pages on one run - 241 products instead of
+    # 426 - so retry, scrolling between attempts to nudge lazy loading, and
+    # only conclude a page is empty once it has had several chances.
+    found = []
+    for attempt in range(LISTING_ATTEMPTS):
+        try:
+            page.wait_for_selector("a[href*='/products/']", timeout=8000)
+        except Exception:
+            pass
+
+        scroll_listing_page(page)
+        page.wait_for_timeout(900)
+
+        try:
+            found = page.evaluate(EXTRACT_LISTING_ITEMS_JS)
+        except Exception as exc:
+            print(f"[WARN] Could not read products from {listing_url}: {exc}")
+            found = []
+
+        if found:
+            break
+        if attempt < LISTING_ATTEMPTS - 1:
+            print(f"[INFO] Nothing yet on {listing_url}, retrying "
+                  f"({attempt + 2}/{LISTING_ATTEMPTS})")
+            page.wait_for_timeout(2000)
 
     if not found:
         print(f"[INFO] No products found on {listing_url}")

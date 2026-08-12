@@ -26,16 +26,39 @@ open **Catalog Manager** in the sidebar.
 Products are rows in the database, so edits are live for everyone immediately and
 survive redeploys.
 
-### Automatic weekly refresh
+### Refreshing prices and stock from Storm
 
-`.github/workflows/refresh-catalog.yml` re-scrapes Storm every Monday at 09:00
-UTC and pushes prices and stock straight into the database. It's free - public
-repositories get unlimited GitHub Actions minutes - and it takes about 25
-minutes per run. You can also trigger it by hand from the **Actions** tab, with
-a dry-run option.
+One command, from the project folder:
+
+```powershell
+.\scripts\refresh-storm-login.ps1
+```
+
+A browser opens; log in to stormbowling.com, come back and press Enter. The
+script uploads the session to GitHub and starts the scrape **in Actions**, so
+nothing runs on your machine and there is no file to upload afterwards. It takes
+about 40 minutes and it's free - public repositories get unlimited Actions
+minutes.
+
+That defaults to a **dry run**: it checks everything and reports what it would
+change without touching the database. If the report looks right:
+
+```powershell
+.\scripts\refresh-storm-login.ps1 -Reuse -Apply
+```
+
+`-Reuse` skips the browser and reuses the session you just captured.
+
+**Why this isn't on a schedule.** Storm's session cookies are short-lived - one
+expires within the hour - so a weekly cron would reliably find the saved login
+stale and scrape public retail prices instead of the team's sponsor prices. The
+guards would catch it and the run would fail, every week. Signing in immediately
+before the scrape avoids the problem entirely. The Catalog Manager's staleness
+warning is the reminder to do it. To go back to a schedule anyway, uncomment the
+`cron` block at the top of the workflow.
 
 Two repository secrets are required (**Settings → Secrets and variables →
-Actions**):
+Actions**), both set for you by the script above except `DATABASE_URL`:
 
 | Secret | Value |
 | --- | --- |

@@ -56,6 +56,10 @@ def parse_args(argv=None):
     parser.add_argument('--max-out-of-stock', type=float, default=0.40,
                         help='fail if more than this fraction of the file is out of '
                              'stock (default: 0.40)')
+    parser.add_argument('--max-new-products', type=float, default=0.50,
+                        help='fail if more than this fraction of the file looks new '
+                             'while the catalog is already populated, which means '
+                             'matching broke (default: 0.50)')
     parser.add_argument('--updated-by', default=os.environ.get('SYNC_ACTOR', 'scheduled sync'),
                         help='recorded against every row this touches')
     parser.add_argument('--force', action='store_true',
@@ -101,6 +105,23 @@ def evaluate_guards(rows: list[dict], existing: list[dict], args) -> tuple[list[
         compared += 1
         if abs(row['price'] - old) > PRICE_EPSILON:
             changed.append((row['name'], old, row['price']))
+
+    # A catalog that is already populated should mostly recognise what arrives.
+    # A flood of "new" products means matching broke - Storm moving their URLs
+    # did exactly that - and applying it would duplicate the whole catalog
+    # rather than update it.
+    incoming_urls = {row['product_url'] for row in rows}
+    known_urls = {str(p['product_url']) for p in existing}
+    brand_new = len(incoming_urls - known_urls)
+    new_fraction = (brand_new / total) if total else 0.0
+
+    if existing and new_fraction > args.max_new_products:
+        problems.append(
+            f'{brand_new} of {total} rows ({new_fraction:.0%}) look like new products, '
+            f'over the {args.max_new_products:.0%} limit, while the catalog already '
+            f'holds {len(existing)}. Applying this would duplicate the catalog '
+            'instead of updating it.'
+        )
 
     drift = (len(changed) / compared) if compared else 0.0
     if compared and drift > args.max_price_drift:

@@ -877,6 +877,55 @@ def get_product_urls() -> set[str]:
     return {str(row['product_url']) for row in rows}
 
 
+def _usable_sku(value) -> str:
+    """SKUs with whitespace are scraper junk, not real part numbers."""
+    sku = str(value or '').strip().upper()
+    if not sku or sku == 'NAN' or any(ch.isspace() for ch in sku):
+        return ''
+    return sku
+
+
+def _rekey_by_sku(rows: list[dict]) -> list[dict]:
+    """
+    Point incoming rows at the product they already are, matched on SKU.
+
+    product_url is the table's key, but Storm moved their catalog: products that
+    lived at /products/<main>/<sub>/<slug> now also appear at the site root, so
+    the same grip cream arrives as /master-non-slip-grip-cream instead. Matching
+    on URL alone recognised 17 of 241 scraped products; matching on SKU
+    recognised 163 of 171, and those agreed on price 159 times out of 161.
+
+    Rows whose SKU is already known keep the stored URL as their key, so they
+    update in place instead of arriving as duplicates.
+    """
+    known = get_products()
+    if not known:
+        return rows
+
+    by_sku: dict[str, str] = {}
+    for product in known:
+        sku = _usable_sku(product.get('sku'))
+        # Ambiguous SKUs are no better than no SKU, so drop them from the map.
+        if sku:
+            by_sku[sku] = '' if sku in by_sku else str(product['product_url'])
+
+    known_urls = {str(p['product_url']) for p in known}
+    rekeyed = 0
+
+    for row in rows:
+        if row['product_url'] in known_urls:
+            continue
+        stored_url = by_sku.get(_usable_sku(row.get('sku')))
+        if stored_url:
+            row['product_url'] = stored_url
+            rekeyed += 1
+
+    if rekeyed:
+        print(f'[catalog] matched {rekeyed} product(s) to existing rows by SKU '
+              'rather than URL')
+    return rows
+
+
 def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '') -> dict:
     """
     Load catalog rows into the products table.
@@ -893,6 +942,9 @@ def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '
     rows = [_normalize_product(row) for row in rows if str(row.get('product_url') or '').strip()]
     if not rows:
         return {'inserted': 0, 'updated': 0, 'skipped': 0, 'deleted': 0}
+
+    if mode != 'replace':
+        rows = _rekey_by_sku(rows)
 
     existing = set() if mode == 'replace' else get_product_urls()
     incoming = {row['product_url'] for row in rows}

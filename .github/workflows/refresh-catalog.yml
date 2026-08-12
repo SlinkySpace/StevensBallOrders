@@ -12,10 +12,22 @@ name: Refresh catalog
 # sync_catalog.py refuses to write and this workflow opens an issue. Refreshing
 # the secret is a manual job - see the README.
 
+# Run on demand, not on a schedule.
+#
+# Storm's session cookies are short-lived - one expires within the hour - so a
+# weekly cron would reliably find the saved login stale, scrape the public
+# retail prices instead of the team's, trip the guards and fail. A job that
+# always fails is worse than no job.
+#
+# Instead: scripts/refresh-storm-login.ps1 signs you in, uploads the session and
+# starts this workflow immediately, while the login is fresh. The Catalog
+# Manager warns when the catalog is getting old, which is the nudge to do it.
+#
+# To go back to a schedule, uncomment below - the failure path already opens an
+# issue explaining how to refresh the secret.
+#   schedule:
+#     - cron: '0 9 * * 1'
 on:
-  schedule:
-    # Mondays, 09:00 UTC. Storm rarely changes its line-up, so weekly is plenty.
-    - cron: '0 9 * * 1'
   workflow_dispatch:
     inputs:
       dry_run:
