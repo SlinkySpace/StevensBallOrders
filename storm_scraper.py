@@ -6,11 +6,19 @@ from urllib.parse import urljoin
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 BASE_DOMAIN = "https://www.stormbowling.com"
-START_PAGE = 1
-END_PAGE = 19
+START_PAGE = int(os.environ.get("SCRAPER_START_PAGE", 1))
+END_PAGE = int(os.environ.get("SCRAPER_END_PAGE", 19))
 OUTPUT_CSV = "storm_products.csv"
-AUTH_STATE_FILE = "storm_auth_state.json"
+AUTH_STATE_FILE = os.environ.get("STORM_AUTH_STATE_FILE", "storm_auth_state.json")
 
 # First run:
 #   SETUP_LOGIN = True
@@ -19,12 +27,15 @@ AUTH_STATE_FILE = "storm_auth_state.json"
 # After auth state is saved:
 #   SETUP_LOGIN = False
 #   HEADLESS_SCRAPE = True
-SETUP_LOGIN = False
-HEADLESS_SCRAPE = True
+SETUP_LOGIN = _env_flag("SCRAPER_SETUP_LOGIN", False)
+HEADLESS_SCRAPE = _env_flag("SCRAPER_HEADLESS", True)
 
 # True = use installed Microsoft Edge channel
 # False = use bundled Chromium
-USE_EDGE_CHANNEL = True
+#
+# CI runners have no Edge, so the workflow sets SCRAPER_USE_EDGE=false to fall
+# back to the Chromium that `playwright install` provides.
+USE_EDGE_CHANNEL = _env_flag("SCRAPER_USE_EDGE", True)
 
 LISTING_URL_TEMPLATE = "https://www.stormbowling.com/products/24/1/{page}/"
 

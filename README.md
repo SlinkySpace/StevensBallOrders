@@ -26,16 +26,65 @@ open **Catalog Manager** in the sidebar.
 Products are rows in the database, so edits are live for everyone immediately and
 survive redeploys.
 
+### Automatic weekly refresh
+
+`.github/workflows/refresh-catalog.yml` re-scrapes Storm every Monday at 09:00
+UTC and pushes prices and stock straight into the database. It's free - public
+repositories get unlimited GitHub Actions minutes - and it takes about 25
+minutes per run. You can also trigger it by hand from the **Actions** tab, with
+a dry-run option.
+
+Two repository secrets are required (**Settings → Secrets and variables →
+Actions**):
+
+| Secret | Value |
+| --- | --- |
+| `DATABASE_URL` | the same Neon connection string the app uses |
+| `STORM_AUTH_STATE` | the entire contents of `storm_auth_state.json` |
+
+To produce `STORM_AUTH_STATE` the first time:
+
+```bash
+SCRAPER_SETUP_LOGIN=true python storm_scraper.py
+```
+
+A browser opens; log in to stormbowling.com, come back to the terminal and press
+Enter. Paste the contents of the generated `storm_auth_state.json` into the
+secret. That file is gitignored and must never be committed - it *is* a logged-in
+session.
+
+**The saved session will expire eventually.** That's the important failure mode,
+because the scraper doesn't error when it happens - it just sees Storm as a
+logged-out visitor, which means **retail prices instead of your sponsor prices**.
+Writing those to the database would quietly overcharge the whole team.
+
+So `sync_catalog.py` refuses to write when the scraped data looks wrong:
+
+- fewer than 300 usable rows - the scrape broke partway through
+- more than 25% of prices changed - the signature of a logged-out scrape
+- more than 40% of the file has no price at all - same cause
+
+A tripped guard writes nothing, fails the run, and opens a GitHub issue with
+instructions (subsequent failures comment on the existing issue rather than
+opening more). The catalog in the app is left exactly as it was. The scraped CSVs
+are attached to every run as an artifact so you can see what actually came back.
+
+If a genuine bulk repricing trips the guard, either raise the threshold for one
+run via the workflow's `max_price_drift` input, or just import the CSV by hand
+from the Catalog Manager where you get a diff preview first.
+
+To sync manually:
+
+```bash
+DATABASE_URL="postgresql://..." python sync_catalog.py --dry-run
+```
+
 ### How current is the catalog?
 
-Nothing updates it automatically, and that's a deliberate limitation rather than
-an oversight: Storm publishes no price feed, and `storm_scraper.py` drives a real
-browser using a saved logged-in session (`storm_auth_state.json`). That session
-can't be committed, expires periodically, and needs a human to re-create - so a
-scheduled scraper on free hosting would quietly rot rather than keep things
-fresh.
+Between weekly runs, nothing updates it - and day-to-day stock changes are
+usually faster to make by hand in the Catalog Manager anyway.
 
-What the app does instead is make staleness impossible to miss:
+The app makes staleness visible rather than assuming it away:
 
 - The Catalog Manager shows **Last edited** and when a scraper CSV was last
   imported, by whom, and in which mode.
@@ -44,13 +93,10 @@ What the app does instead is make staleness impossible to miss:
 - Every product row carries its own **Last edited** date in the grid, so you can
   sort out which entries nobody has touched since the initial import.
 
-In practice: stock and price corrections you make by hand in the Catalog Manager
-as they come up, and a full re-scrape is worth doing when Storm changes their
-line-up - roughly each season, or whenever the staleness warning appears.
+### Re-scraping by hand
 
-### Re-scraping the Storm catalog
-
-Only needed when Storm adds or removes products - not for price or stock changes.
+The weekly workflow does this for you. Run it locally only if you want the
+images refreshed too, or if you're debugging the scraper.
 
 ```bash
 python storm_scraper.py
@@ -96,6 +142,9 @@ change between releases.
 - `config.py` - configuration and secret loading
 - `storm_scraper.py` / `label_cleaning.py` - catalog scraping pipeline
 - `download_images.py` / `optimize_images.py` - product image pipeline
+- `sync_catalog.py` - loads a scraper CSV into the database, with the guards that
+  stop an expired login from writing retail prices
+- `.github/workflows/refresh-catalog.yml` - the weekly automated refresh
 
 ## Database
 

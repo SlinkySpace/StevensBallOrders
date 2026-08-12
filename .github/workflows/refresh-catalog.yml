@@ -1,0 +1,174 @@
+name: Refresh catalog
+
+# Re-scrapes stormbowling.com and pushes prices and stock into the database.
+#
+# Requires two repository secrets:
+#   DATABASE_URL      - the same Neon connection string the app uses
+#   STORM_AUTH_STATE  - the contents of storm_auth_state.json, i.e. a logged-in
+#                       browser session for stormbowling.com
+#
+# STORM_AUTH_STATE expires. When it does the scrape still finishes, but as a
+# logged-out visitor seeing retail prices instead of sponsor prices, so
+# sync_catalog.py refuses to write and this workflow opens an issue. Refreshing
+# the secret is a manual job - see the README.
+
+on:
+  schedule:
+    # Mondays, 09:00 UTC. Storm rarely changes its line-up, so weekly is plenty.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Check and report, but write nothing'
+        type: boolean
+        default: false
+      mode:
+        description: 'Merge mode'
+        type: choice
+        options: [refresh, add_new]
+        default: refresh
+      max_price_drift:
+        description: 'Abort if more than this fraction of prices changed (0.25 = 25%)'
+        type: string
+        default: '0.25'
+
+# Never let two scrapes overlap; they would fight over the same CSV and images.
+concurrency:
+  group: refresh-catalog
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install playwright Pillow
+          playwright install --with-deps chromium
+
+      - name: Restore the Storm login session
+        env:
+          STORM_AUTH_STATE: ${{ secrets.STORM_AUTH_STATE }}
+        run: |
+          if [ -z "$STORM_AUTH_STATE" ]; then
+            echo "::error::STORM_AUTH_STATE secret is not set. See the README for how to create it."
+            exit 1
+          fi
+          printf '%s' "$STORM_AUTH_STATE" > storm_auth_state.json
+          python -c "import json;json.load(open('storm_auth_state.json'));print('auth state parsed OK')"
+
+      - name: Scrape stormbowling.com
+        env:
+          SCRAPER_USE_EDGE: 'false'   # runners have no Edge; use bundled Chromium
+          SCRAPER_HEADLESS: 'true'
+        run: python storm_scraper.py
+
+      - name: Tag categories
+        run: python label_cleaning.py
+
+      # Runs before the image work so a bad scrape fails in ~1 minute instead of
+      # after downloading hundreds of files.
+      - name: Check the scrape looks sane
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          python sync_catalog.py \
+            --dry-run \
+            --mode "${{ inputs.mode || 'refresh' }}" \
+            --max-price-drift "${{ inputs.max_price_drift || '0.25' }}"
+
+      - name: Fetch and compress images for new products
+        run: |
+          python download_images.py
+          python optimize_images.py --delete-originals
+
+      - name: Sync prices and stock to the database
+        if: ${{ inputs.dry_run != true }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SYNC_ACTOR: 'scheduled refresh'
+        run: |
+          python sync_catalog.py \
+            --mode "${{ inputs.mode || 'refresh' }}" \
+            --max-price-drift "${{ inputs.max_price_drift || '0.25' }}"
+
+      - name: Commit the refreshed catalog
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add storm_products_tagged.csv static/catalog_images
+          if git diff --cached --quiet; then
+            echo "Nothing changed in the catalog files."
+          else
+            git commit -m "Refresh catalog from stormbowling.com
+
+          Automated weekly scrape. Prices and stock are already live in the
+          database; this commit carries the CSV of record and any images for
+          products that are new since the last run."
+            git push
+          fi
+
+      # Keeps the scraper output around even when a run fails, so a bad scrape
+      # can be inspected without re-running it.
+      - name: Keep the scraped CSVs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-output
+          path: |
+            storm_products.csv
+            storm_products_tagged.csv
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Open an issue if this failed
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE='Scheduled catalog refresh failed'
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "Failed again: $RUN_URL"
+            exit 0
+          fi
+
+          gh issue create --title "$TITLE" --body "$(cat <<EOF
+          The weekly catalog refresh failed: $RUN_URL
+
+          The usual cause is an expired \`STORM_AUTH_STATE\`. When the saved session
+          stops working the scraper sees stormbowling.com logged out, which means
+          retail prices rather than sponsor prices, and \`sync_catalog.py\` refuses
+          to write them to the database.
+
+          Nothing was written, so the catalog in the app is unchanged and still
+          usable. To fix:
+
+          1. Locally, set \`SCRAPER_SETUP_LOGIN=true\` and run \`python storm_scraper.py\`.
+          2. Log in to stormbowling.com in the browser window that opens, then press Enter.
+          3. Copy the contents of the regenerated \`storm_auth_state.json\`.
+          4. Paste it into the \`STORM_AUTH_STATE\` repository secret.
+          5. Re-run this workflow from the Actions tab.
+
+          Check the "scrape-output" artifact on the failed run to see what was
+          actually scraped.
+          EOF
+          )"
