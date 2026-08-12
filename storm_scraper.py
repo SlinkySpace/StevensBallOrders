@@ -162,20 +162,32 @@ EXTRACT_LISTING_ITEMS_JS = """
     'about-us','where-to-buy','find-a-dealer','customer-service'
   ]);
 
+  const bareHost = (h) => (h || '').replace(/^www\\./, '').toLowerCase();
+
   const isProduct = (href) => {
     if (!href) return false;
-    let path;
-    try { path = new URL(href, location.origin).pathname; } catch (e) { return false; }
-    const parts = path.split('/').filter(Boolean);
+
+    let url;
+    try { url = new URL(href, location.origin); } catch (e) { return false; }
+
+    // Without these two checks "tel:(435)-723-0403" parses to a pathname of
+    // "(435)-723-0403", which the root-slug rule below happily accepted - and
+    // the scraper then tried to navigate to it.
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    if (bareHost(url.hostname) !== bareHost(location.hostname)) return false;
+
+    const parts = url.pathname.split('/').filter(Boolean);
     if (!parts.length) return false;
 
     if (parts[0] === 'products') {
       return parts.length >= 4 && !/^\\d+$/.test(parts[1]);
     }
     // Root-level product page, e.g. /900-global-2-ball-deluxe-tote
+    const slug = parts[0].toLowerCase();
     return parts.length === 1
-        && parts[0].includes('-')
-        && !NON_PRODUCT_ROOTS.has(parts[0].toLowerCase());
+        && /^[a-z0-9][a-z0-9-]*$/.test(slug)
+        && slug.includes('-')
+        && !NON_PRODUCT_ROOTS.has(slug);
   };
 
   const pickImage = (scope) => {
@@ -439,6 +451,10 @@ def scrape_product_detail(page, product_url: str):
         page.wait_for_timeout(1000)
     except PlaywrightTimeoutError:
         print(f"[WARN] Timeout loading product page: {product_url}")
+        return detail
+    except Exception as exc:
+        # One unusable link must not end a 25 minute scrape.
+        print(f"[WARN] Could not load {product_url}: {exc}")
         return detail
 
     name = text_or_empty(page.locator(f"xpath={NAME_XPATH}"))
