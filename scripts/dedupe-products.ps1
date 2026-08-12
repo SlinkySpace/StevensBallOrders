@@ -33,6 +33,24 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 Write-Host "Working in $projectRoot"
 
+# Talking to the hosted database needs psycopg, which is in requirements.txt but
+# is easy not to have locally - the app runs on SQLite here unless DATABASE_URL
+# is set, so nothing installs it until the first time you point at Postgres.
+if (-not $Local) {
+    python -c "import psycopg" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'psycopg is not installed, so this cannot reach the hosted database.' -ForegroundColor Yellow
+        Write-Host 'Installing it now...' -ForegroundColor Yellow
+        python -m pip install --quiet "psycopg[binary,pool]>=3.2"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host 'Install failed. Run this yourself, then retry:' -ForegroundColor Red
+            Write-Host '    python -m pip install "psycopg[binary,pool]"' -ForegroundColor Red
+            exit 1
+        }
+        Write-Host 'Installed.' -ForegroundColor Green
+    }
+}
+
 $arguments = @('dedupe_products.py')
 if ($DryRun) { $arguments += '--dry-run' }
 if ($Hide)   { $arguments += '--hide' }

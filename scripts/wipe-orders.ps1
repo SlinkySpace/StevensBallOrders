@@ -30,6 +30,21 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 Write-Host "Working in $projectRoot"
 
+# See dedupe-products.ps1: psycopg is in requirements.txt but nothing installs
+# it locally until you first point at the hosted database.
+if (-not $Local) {
+    python -c "import psycopg" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'Installing psycopg, needed to reach the hosted database...' -ForegroundColor Yellow
+        python -m pip install --quiet "psycopg[binary,pool]>=3.2"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host 'Install failed. Run this yourself, then retry:' -ForegroundColor Red
+            Write-Host '    python -m pip install "psycopg[binary,pool]"' -ForegroundColor Red
+            exit 1
+        }
+    }
+}
+
 $arguments = @('wipe_orders.py')
 if ($DryRun)       { $arguments += '--dry-run' }
 if ($KeepBalances) { $arguments += '--keep-balances' }
