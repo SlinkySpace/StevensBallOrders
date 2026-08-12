@@ -1,0 +1,27 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Local database - the deployed app uses DATABASE_URL (Postgres)
+*.db
+*.sqlite3
+
+# Secrets. Never commit these.
+.streamlit/secrets.toml
+storm_auth_state.json
+
+# Scraper intermediate output
+storm_products.csv
+
+# Local tooling config (machine-specific paths)
+.claude/
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -1,9 +1,12 @@
+import html
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from auth import (
+    account_needs_password,
+    change_password,
     get_current_user,
     init_session_state,
     is_admin,
@@ -11,18 +14,31 @@ from auth import (
     login_user,
     logout_user,
     refresh_user_session,
+    set_initial_password,
     signup_user,
 )
-from catalog import filter_catalog, get_filter_options, get_option_config, load_catalog
-from config import APP_TITLE, ACTIVE_ORDER_STATUSES, COMPLETED_ORDER_STATUSES
+from catalog import (
+    bootstrap_catalog_from_csv,
+    filter_catalog,
+    get_filter_options,
+    get_option_config,
+    load_catalog,
+)
+from catalog_admin import render_catalog_manager
+from config import (
+    ACTIVE_ORDER_STATUSES,
+    APP_TITLE,
+    BASE_DIR,
+    COMPLETED_ORDER_STATUSES,
+    MIN_PASSWORD_LENGTH,
+    TEAM_ACCESS_CODE,
+)
 from db import (
+    clear_user_password,
     delete_order,
     evaluate_ball_batch_notification,
-    get_all_orders,
-    get_all_users,
-    get_grouped_pending_ball_orders,
     get_orders_for_user,
-    get_pending_ball_orders_count,
+    get_owner_dashboard_data,
     init_db,
     place_order_items,
     save_cart,
@@ -39,34 +55,66 @@ refresh_user_session()
 
 ORDER_STATUS_OPTIONS = ['submitted', 'approved', 'ordered', 'fulfilled', 'cancelled']
 CATALOG_ITEMS_PER_PAGE = 25
+PLACEHOLDER_IMAGE = (
+    "<div style='width:100%;aspect-ratio:1;display:flex;align-items:center;"
+    "justify-content:center;background:rgba(128,128,128,0.08);border-radius:8px;"
+    "color:rgba(128,128,128,0.7);font-size:0.8rem;'>No image</div>"
+)
 
 
 def currency(value: float) -> str:
     return f"${value:,.2f}"
 
 
-def safe_show_image(image_value: str):
-    image_value = str(image_value or "").strip()
-    if not image_value:
+@st.cache_data(show_spinner=False)
+def _static_image_files() -> set[str]:
+    """
+    Every file under static/, as posix paths relative to the app root.
+
+    Used to tell a broken image path from a good one without stat()-ing the
+    filesystem once per product card per rerun.
+    """
+    static_root = Path(BASE_DIR) / 'static'
+    if not static_root.is_dir():
+        return set()
+    return {
+        path.relative_to(BASE_DIR).as_posix()
+        for path in static_root.rglob('*')
+        if path.is_file()
+    }
+
+
+def image_src(image_value: str) -> str:
+    """
+    Resolve a stored image path to something the browser can fetch.
+
+    Local files are served by Streamlit's static file server (enabled in
+    .streamlit/config.toml) at app/static/..., which lets the browser cache them
+    and skips routing every image through the server's media manager.
+    """
+    value = str(image_value or '').strip().replace('\\', '/')
+    if not value:
+        return ''
+    if value.startswith(('http://', 'https://', 'data:')):
+        return value
+    if value.startswith('static/') and value in _static_image_files():
+        return f'app/{value}'
+    return ''
+
+
+def show_image(image_value: str, alt: str = '') -> None:
+    src = image_src(image_value)
+    if not src:
+        st.markdown(PLACEHOLDER_IMAGE, unsafe_allow_html=True)
         return
 
-    try:
-        if image_value.startswith(('http://', 'https://')):
-            st.image(image_value, use_container_width=True)
-            return
-
-        image_path = Path(image_value)
-        if image_path.exists():
-            st.image(str(image_path), use_container_width=True)
-        else:
-            st.caption('Image unavailable')
-    except Exception:
-        st.caption('Image unavailable')
-
-
-@st.cache_data(show_spinner=False)
-def get_catalog_df():
-    return load_catalog()
+    # loading="lazy" means a 25-product page only fetches what's on screen.
+    st.markdown(
+        f"<img src='{html.escape(src, quote=True)}' alt='{html.escape(alt, quote=True)}' "
+        f"loading='lazy' decoding='async' "
+        f"style='width:100%;height:auto;border-radius:8px;' />",
+        unsafe_allow_html=True,
+    )
 
 
 def ensure_cart():
@@ -121,37 +169,80 @@ def confirm_delete_dialog(order_id: int, product_name: str):
 def render_auth_page():
     st.title(APP_TITLE)
     st.caption('Internal team ordering tool for discounted bowling products.')
-    left, right = st.columns(2)
 
-    with left:
-        st.subheader('Login')
+    login_tab, signup_tab, setup_tab = st.tabs(
+        ['Login', 'Create account', 'First time here?']
+    )
+
+    with login_tab:
         with st.form('login_form'):
-            email = st.text_input('Email').strip().lower()
-            submitted = st.form_submit_button('Login')
-            if submitted:
-                if login_user(email):
+            email = st.text_input('Email')
+            password = st.text_input('Password', type='password')
+            if st.form_submit_button('Login', type='primary'):
+                ok, error = login_user(email, password)
+                if ok:
                     st.session_state['catalog_page_number'] = 1
-                    st.success('Logged in successfully.')
                     st.rerun()
                 else:
-                    st.error('No account found for that email.')
+                    st.error(error)
+                    if account_needs_password(email):
+                        st.info(
+                            'This account was created before passwords were added. '
+                            'Open the **First time here?** tab to set one.'
+                        )
 
-    with right:
-        st.subheader('Create account')
+    with signup_tab:
         with st.form('signup_form'):
-            first_name = st.text_input('First name')
-            last_name = st.text_input('Last name')
-            email = st.text_input('Email address').strip().lower()
-            submitted = st.form_submit_button('Create account')
-            if submitted:
-                if not first_name or not last_name or not email:
-                    st.error('Please complete all fields.')
-                elif signup_user(first_name, last_name, email):
+            c1, c2 = st.columns(2)
+            with c1:
+                first_name = st.text_input('First name')
+            with c2:
+                last_name = st.text_input('Last name')
+            email = st.text_input('Email address')
+            password = st.text_input(
+                'Password', type='password',
+                help=f'At least {MIN_PASSWORD_LENGTH} characters.',
+            )
+            confirm = st.text_input('Confirm password', type='password')
+            access_code = (
+                st.text_input('Team access code', type='password')
+                if TEAM_ACCESS_CODE else ''
+            )
+
+            if st.form_submit_button('Create account', type='primary'):
+                ok, error = signup_user(
+                    first_name, last_name, email, password, confirm, access_code
+                )
+                if ok:
                     st.session_state['catalog_page_number'] = 1
-                    st.success('Account created.')
                     st.rerun()
                 else:
-                    st.error('An account with that email already exists.')
+                    st.error(error)
+
+    with setup_tab:
+        st.caption(
+            'If your account was created before passwords were added, set your '
+            'password here. Your orders and balance stay exactly as they are.'
+        )
+        with st.form('claim_form'):
+            email = st.text_input('Email')
+            password = st.text_input(
+                'Choose a password', type='password',
+                help=f'At least {MIN_PASSWORD_LENGTH} characters.',
+            )
+            confirm = st.text_input('Confirm password', type='password')
+            access_code = (
+                st.text_input('Team access code', type='password')
+                if TEAM_ACCESS_CODE else ''
+            )
+
+            if st.form_submit_button('Set password and log in', type='primary'):
+                ok, error = set_initial_password(email, password, confirm, access_code)
+                if ok:
+                    st.session_state['catalog_page_number'] = 1
+                    st.rerun()
+                else:
+                    st.error(error)
 
 
 def render_sidebar():
@@ -169,13 +260,92 @@ def render_sidebar():
 
     base_pages = ['Catalog', 'Cart', 'Checkout', 'Profile', 'Outstanding Orders', 'Order History']
     if is_admin():
-        base_pages.append('Owner Dashboard')
+        base_pages += ['Owner Dashboard', 'Catalog Manager']
     return st.sidebar.radio('Go to', base_pages)
+
+
+@st.fragment
+def render_product_card(row: dict, row_key: str):
+    """
+    One product card.
+
+    Marked as a fragment so changing quantity, size or the note reruns just this
+    card instead of the whole 25-product page.
+    """
+    with st.container(border=True):
+        left, right = st.columns([1, 2])
+        with left:
+            show_image(row.get('image_url'), alt=str(row.get('name', '')))
+        with right:
+            st.subheader(str(row['name']))
+            st.write(f"**Price:** {currency(float(row['price_value']))}")
+            st.write(f"**SKU:** {str(row['sku']) or 'N/A'}")
+
+            scent = str(row.get('scent', '') or '').strip()
+            if row.get('product_type') == 'bowling_ball' and scent and scent.lower() != 'none':
+                st.write(f"**Scent:** {scent}")
+
+            product_url = str(row.get('product_url', '')).strip()
+            if product_url.startswith(('http://', 'https://')):
+                st.markdown(f"[Open Storm product page]({product_url})")
+
+            option_config = get_option_config(row['product_type'])
+            option_value = ''
+
+            if option_config['options']:
+                options = option_config['options']
+                default_index = 0
+
+                if row['product_type'] == 'bowling_ball':
+                    for i, opt in enumerate(options):
+                        digits = ''.join(ch for ch in str(opt) if ch.isdigit())
+                        if digits == '15':
+                            default_index = i
+                            break
+
+                option_value = st.selectbox(
+                    option_config['option_type'],
+                    options,
+                    index=default_index,
+                    key=f"opt_{row_key}",
+                )
+
+            quantity = st.number_input(
+                'Quantity', min_value=1, max_value=20, value=1, step=1, key=f"qty_{row_key}"
+            )
+            note = st.text_input('Order note (optional)', key=f"note_{row_key}")
+
+            if st.button('Add to cart', key=f"add_{row_key}"):
+                add_to_cart({
+                    'name': str(row['name']),
+                    'sku': str(row['sku']),
+                    'unit_price': float(row['price_value']),
+                    'image_url': str(row['image_url']),
+                    'product_url': str(row['product_url']),
+                    'option_type': option_config['option_type'],
+                    'option_value': option_value,
+                    'quantity': int(quantity),
+                    'note': note,
+                    'main_category': str(row['main_category']),
+                    'sub_category': str(row['sub_category']),
+                    'product_type': str(row['product_type']),
+                    'scent': scent if row.get('product_type') == 'bowling_ball' else '',
+                })
+                st.toast(f"Added {row['name']} to cart.")
+                # Full rerun so the sidebar cart count keeps up.
+                st.rerun(scope='app')
 
 
 def render_catalog_page():
     st.header('Product Dashboard')
-    df = get_catalog_df()
+    df = load_catalog()
+
+    if df.empty:
+        st.info('The catalog is empty.')
+        if is_admin():
+            st.caption('Load it from the Catalog Manager page.')
+        return
+
     main_options, sub_options = get_filter_options(df)
 
     c1, c2, c3 = st.columns([1, 1, 2])
@@ -186,7 +356,7 @@ def render_catalog_page():
     with c3:
         search = st.text_input('Search by product name or SKU')
 
-    filtered = filter_catalog(df, search, selected_main, selected_sub).reset_index(drop=True)
+    filtered = filter_catalog(df, search, selected_main, selected_sub)
 
     total_items = len(filtered)
     total_pages = max(1, (total_items + CATALOG_ITEMS_PER_PAGE - 1) // CATALOG_ITEMS_PER_PAGE)
@@ -197,11 +367,7 @@ def render_catalog_page():
         st.caption(f'{total_items} products shown')
     with top_right:
         page_number = st.number_input(
-            'Catalog page',
-            min_value=1,
-            max_value=total_pages,
-            value=current_page,
-            step=1,
+            'Catalog page', min_value=1, max_value=total_pages, value=current_page, step=1
         )
         current_page = int(page_number)
         st.session_state['catalog_page_number'] = current_page
@@ -215,89 +381,24 @@ def render_catalog_page():
     else:
         st.caption('Showing 0 products')
 
-    for idx, row in page_df.iterrows():
-        row_key = f"{idx}_{str(row.get('sku', '')).strip()}_{str(row.get('product_url', '')).strip()}"
-
-        with st.container(border=True):
-            left, right = st.columns([1, 2])
-            with left:
-                safe_show_image(row.get('image_url'))
-            with right:
-                st.subheader(str(row['name']))
-                st.write(f"**Price:** {currency(float(row['price_value']))}")
-                st.write(f"**SKU:** {str(row['sku']) or 'N/A'}")
-
-                scent = str(row.get('scent', '') or '').strip()
-                if row.get('product_type') == 'bowling_ball' and scent and scent.lower() != 'none':
-                    st.write(f"**Scent:** {scent}")
-
-                if str(row.get('product_url', '')).strip():
-                    st.markdown(f"[Open Storm product page]({row['product_url']})")
-
-                option_config = get_option_config(row['product_type'])
-                option_value = ''
-
-                if option_config['options']:
-                    options = option_config['options']
-                    default_index = 0
-
-                    if row['product_type'] == 'bowling_ball':
-                        for i, opt in enumerate(options):
-                            digits = ''.join(ch for ch in str(opt) if ch.isdigit())
-                            if digits == '15':
-                                default_index = i
-                                break
-
-                    option_value = st.selectbox(
-                        option_config['option_type'],
-                        options,
-                        index=default_index,
-                        key=f"opt_{row_key}"
-                    )
-
-                quantity = st.number_input(
-                    'Quantity',
-                    min_value=1,
-                    max_value=20,
-                    value=1,
-                    step=1,
-                    key=f"qty_{row_key}"
-                )
-                note = st.text_input(
-                    'Order note (optional)',
-                    key=f"note_{row_key}"
-                )
-
-                if st.button('Add to cart', key=f"add_{row_key}"):
-                    add_to_cart({
-                        'name': str(row['name']),
-                        'sku': str(row['sku']),
-                        'unit_price': float(row['price_value']),
-                        'image_url': str(row['image_url']),
-                        'product_url': str(row['product_url']),
-                        'option_type': option_config['option_type'],
-                        'option_value': option_value,
-                        'quantity': int(quantity),
-                        'note': note,
-                        'main_category': str(row['main_category']),
-                        'sub_category': str(row['sub_category']),
-                        'product_type': str(row['product_type']),
-                        'scent': scent if row.get('product_type') == 'bowling_ball' else '',
-                    })
-                    st.success('Added to cart.')
+    for _, row in page_df.iterrows():
+        # product_url is unique per product, so widget keys stay stable across
+        # reruns even as filters and pagination change what's on screen.
+        render_product_card(row.to_dict(), str(row['product_url']))
 
     nav_left, nav_center, nav_right = st.columns([1, 2, 1])
     with nav_left:
         if st.button('← Previous', disabled=current_page <= 1, key='catalog_prev_bottom'):
-            new_page = max(1, current_page - 1)
-            st.session_state['catalog_page_number'] = new_page
+            st.session_state['catalog_page_number'] = max(1, current_page - 1)
             st.rerun()
     with nav_center:
-        st.markdown(f"<div style='text-align:center; padding-top:0.5rem;'>Page {current_page} of {total_pages}</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='text-align:center; padding-top:0.5rem;'>Page {current_page} of {total_pages}</div>",
+            unsafe_allow_html=True,
+        )
     with nav_right:
         if st.button('Next →', disabled=current_page >= total_pages, key='catalog_next_bottom'):
-            new_page = min(total_pages, current_page + 1)
-            st.session_state['catalog_page_number'] = new_page
+            st.session_state['catalog_page_number'] = min(total_pages, current_page + 1)
             st.rerun()
 
 
@@ -316,7 +417,7 @@ def render_cart_page():
         with st.container(border=True):
             left, right = st.columns([1, 2])
             with left:
-                safe_show_image(item.get('image_url'))
+                show_image(item.get('image_url'), alt=str(item.get('name', '')))
             with right:
                 st.write(f"**{item['name']}**")
                 st.write(f"SKU: {item['sku'] or 'N/A'}")
@@ -329,10 +430,7 @@ def render_cart_page():
 
                 old_qty = int(item.get('quantity', 1))
                 qty = st.number_input(
-                    f"Quantity #{idx+1}",
-                    min_value=1,
-                    max_value=20,
-                    value=old_qty,
+                    f"Quantity #{idx+1}", min_value=1, max_value=20, value=old_qty,
                     key=f"cart_qty_{idx}"
                 )
                 item['quantity'] = int(qty)
@@ -349,7 +447,7 @@ def render_cart_page():
                         item['option_type'],
                         options,
                         index=options.index(current) if options else 0,
-                        key=f"cart_opt_{idx}"
+                        key=f"cart_opt_{idx}",
                     ) if options else current
 
                     if selected != item.get('option_value'):
@@ -432,6 +530,25 @@ def render_profile_page():
         st.success('Saved card field updated.')
         st.rerun()
 
+    st.divider()
+    st.subheader('Change password')
+    with st.form('change_password_form'):
+        current_password = st.text_input('Current password', type='password')
+        new_password = st.text_input(
+            'New password', type='password',
+            help=f'At least {MIN_PASSWORD_LENGTH} characters.',
+        )
+        confirm = st.text_input('Confirm new password', type='password')
+
+        if st.form_submit_button('Update password', type='primary'):
+            ok, error = change_password(
+                user['email'], current_password, new_password, confirm
+            )
+            if ok:
+                st.success('Password updated.')
+            else:
+                st.error(error)
+
 
 def _orders_dataframe(rows):
     if not rows:
@@ -461,23 +578,32 @@ def render_order_history_page():
     st.dataframe(df, use_container_width=True)
 
 
+def render_security_notices(users):
+    """
+    Until a legacy account sets a password, anyone who knows its email address
+    can claim it. Say so plainly rather than letting it sit unnoticed.
+    """
+    passwordless = [u for u in users if not str(u.get('password_hash') or '').strip()]
+
+    if passwordless and not TEAM_ACCESS_CODE:
+        names = ', '.join(str(u['email']) for u in passwordless[:5])
+        more = f' and {len(passwordless) - 5} more' if len(passwordless) > 5 else ''
+        st.error(
+            f'**{len(passwordless)} account(s) have no password yet** ({names}{more}). '
+            'Until each one sets a password, anyone who knows the email address can '
+            'claim it. Set `TEAM_ACCESS_CODE` in `.streamlit/secrets.toml` to require '
+            'a shared code, and ask everyone to set their password now.'
+        )
+    elif passwordless:
+        st.warning(
+            f'{len(passwordless)} account(s) have not set a password yet. They need '
+            'the team access code to do so.'
+        )
+
+
 def render_owner_dashboard():
     st.header('Owner Dashboard')
-    pending_ball_count = get_pending_ball_orders_count()
-    grouped_balls = get_grouped_pending_ball_orders()
 
-    c1, c2 = st.columns(2)
-    c1.metric('Pending bowling balls', pending_ball_count)
-    c2.metric('Pending orders', len(get_all_orders(['submitted', 'approved', 'ordered'])))
-
-    st.subheader('Pending bowling ball summary')
-    if grouped_balls:
-        grouped_df = pd.DataFrame([{k: row[k] for k in row.keys()} for row in grouped_balls])
-        st.dataframe(grouped_df, use_container_width=True)
-    else:
-        st.info('No bowling balls currently waiting to be ordered.')
-
-    st.subheader('Order management')
     filter_col1, filter_col2 = st.columns([2, 1])
     with filter_col1:
         selected_statuses = st.multiselect(
@@ -488,7 +614,24 @@ def render_owner_dashboard():
     with filter_col2:
         bulk_status = st.selectbox('Bulk update filtered orders to', ORDER_STATUS_OPTIONS)
 
-    all_filtered_rows = get_all_orders(selected_statuses if selected_statuses else None)
+    # One connection, one round trip, instead of five separate helper calls.
+    data = get_owner_dashboard_data(selected_statuses if selected_statuses else None)
+    all_filtered_rows = data['orders']
+
+    render_security_notices(data['users'])
+
+    c1, c2 = st.columns(2)
+    c1.metric('Pending bowling balls', data['pending_ball_count'])
+    c2.metric('Pending orders', data['active_order_count'])
+
+    st.subheader('Pending bowling ball summary')
+    if data['grouped_balls']:
+        grouped_df = pd.DataFrame([{k: row[k] for k in row.keys()} for row in data['grouped_balls']])
+        st.dataframe(grouped_df, use_container_width=True)
+    else:
+        st.info('No bowling balls currently waiting to be ordered.')
+
+    st.subheader('Order management')
     st.caption(f'{len(all_filtered_rows)} orders shown')
 
     if all_filtered_rows:
@@ -504,7 +647,7 @@ def render_owner_dashboard():
         with st.container(border=True):
             left, mid, right = st.columns([1, 2, 1])
             with left:
-                safe_show_image(row.get('image_url'))
+                show_image(row.get('image_url'), alt=str(row.get('product_name', '')))
             with mid:
                 st.write(f"**{row['product_name']}**")
                 st.write(f"Customer: {row['customer_first_name']} {row['customer_last_name']} ({row['customer_email']})")
@@ -517,7 +660,7 @@ def render_owner_dashboard():
                 st.write(f"Timestamp: {row['timestamp']}")
                 if row['note']:
                     st.write(f"Note: {row['note']}")
-                if str(row.get('product_url', '')).strip():
+                if str(row.get('product_url', '')).strip().startswith(('http://', 'https://')):
                     st.markdown(f"[Open Storm page]({row['product_url']})")
             with right:
                 new_status = st.selectbox(
@@ -542,17 +685,25 @@ def render_owner_dashboard():
         )
 
     st.subheader('User balances')
-    users = get_all_users()
-    for user in users:
-        cols = st.columns([2, 2, 1, 1])
+    st.caption(
+        'Reset password clears the account\'s password so the owner can set a new '
+        'one from the "First time here?" tab. Orders and balance are untouched.'
+    )
+    for user in data['users']:
+        cols = st.columns([2, 2, 1, 1, 1])
         cols[0].write(f"**{user['first_name']} {user['last_name']}**")
-        cols[1].write(user['email'])
+        has_password = bool(str(user.get('password_hash') or '').strip())
+        cols[1].write(f"{user['email']}{'' if has_password else '  ⚠️ no password set'}")
         new_balance = cols[2].number_input(
             f"Balance {user['email']}", value=float(user['balance_owed']), step=1.0, key=f"bal_{user['id']}"
         )
         if cols[3].button('Save', key=f"save_bal_{user['id']}"):
             update_balance(user['id'], new_balance)
             st.success('Balance updated.')
+            st.rerun()
+        if cols[4].button('Reset password', key=f"reset_pw_{user['id']}", disabled=not has_password):
+            clear_user_password(int(user['id']))
+            st.success(f"Password cleared for {user['email']}.")
             st.rerun()
 
     export_df = _orders_dataframe(all_filtered_rows)
@@ -580,9 +731,13 @@ def render_main_app():
         render_order_history_page()
     elif page == 'Owner Dashboard' and is_admin():
         render_owner_dashboard()
+    elif page == 'Catalog Manager' and is_admin():
+        user = get_current_user() or {}
+        render_catalog_manager(str(user.get('email', '')))
 
 
 if not is_logged_in():
     render_auth_page()
 else:
+    bootstrap_catalog_from_csv()
     render_main_app()

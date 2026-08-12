@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
+import streamlit as st
+
 from config import DATABASE_URL, DB_PATH, BALL_BATCH_THRESHOLD, BALL_PENDING_STATUSES
 from email_utils import maybe_send_ball_batch_email, send_order_status_email
 
@@ -13,6 +15,12 @@ USE_POSTGRES = bool(DATABASE_URL)
 if USE_POSTGRES:
     import psycopg
     from psycopg.rows import dict_row
+
+    try:
+        from psycopg_pool import ConnectionPool
+    except ImportError:
+        # Falls back to one fresh connection per call. Works, just slower.
+        ConnectionPool = None
 
 
 SQLITE_SCHEMA = """
@@ -23,7 +31,8 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL UNIQUE,
     saved_card TEXT DEFAULT '',
     balance_owed REAL NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    password_hash TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -61,8 +70,24 @@ CREATE TABLE IF NOT EXISTS saved_carts (
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id)
 );
-"""
 
+CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_url TEXT NOT NULL UNIQUE,
+    sku TEXT DEFAULT '',
+    name TEXT NOT NULL,
+    price REAL NOT NULL DEFAULT 0,
+    in_stock INTEGER NOT NULL DEFAULT 1,
+    is_visible INTEGER NOT NULL DEFAULT 1,
+    main_category TEXT DEFAULT '',
+    sub_category TEXT DEFAULT '',
+    product_type TEXT DEFAULT 'general',
+    scent TEXT DEFAULT '',
+    image_url TEXT DEFAULT '',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT DEFAULT ''
+);
+"""
 
 POSTGRES_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -72,7 +97,8 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT NOT NULL UNIQUE,
     saved_card TEXT DEFAULT '',
     balance_owed DOUBLE PRECISION NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    password_hash TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -108,22 +134,93 @@ CREATE TABLE IF NOT EXISTS saved_carts (
     cart_json TEXT NOT NULL DEFAULT '[]',
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS products (
+    id BIGSERIAL PRIMARY KEY,
+    product_url TEXT NOT NULL UNIQUE,
+    sku TEXT DEFAULT '',
+    name TEXT NOT NULL,
+    price DOUBLE PRECISION NOT NULL DEFAULT 0,
+    in_stock BOOLEAN NOT NULL DEFAULT TRUE,
+    is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+    main_category TEXT DEFAULT '',
+    sub_category TEXT DEFAULT '',
+    product_type TEXT DEFAULT 'general',
+    scent TEXT DEFAULT '',
+    image_url TEXT DEFAULT '',
+    updated_at TEXT NOT NULL,
+    updated_by TEXT DEFAULT ''
+);
 """
+
+INDEX_STATEMENTS = [
+    "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_product_type ON orders(product_type)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_timestamp ON orders(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_saved_carts_user_id ON saved_carts(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_products_visible ON products(is_visible)",
+    "CREATE INDEX IF NOT EXISTS idx_products_sub_category ON products(sub_category)",
+]
 
 
 def _dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
+@st.cache_resource(show_spinner=False)
+def _get_pool():
+    """
+    One shared Postgres pool for the whole server process.
+
+    Opening a connection to a hosted Postgres costs a TLS handshake, which the
+    app used to pay on every single rerun - twice, because init_db() and
+    refresh_user_session() each opened their own. Reusing pooled connections
+    removes that from the critical path.
+    """
+    if not USE_POSTGRES or ConnectionPool is None:
+        return None
+
+    pool = ConnectionPool(
+        DATABASE_URL,
+        min_size=1,
+        max_size=4,
+        # Hosted Postgres (Neon in particular) drops idle connections, so
+        # validate before handing one out rather than failing the rerun.
+        check=ConnectionPool.check_connection,
+        kwargs={'row_factory': dict_row},
+        open=True,
+    )
+    return pool
+
+
 @contextmanager
 def get_conn():
     if USE_POSTGRES:
+        pool = _get_pool()
+        if pool is not None:
+            # pool.connection() commits on clean exit, rolls back on error,
+            # and returns the connection to the pool either way.
+            with pool.connection() as conn:
+                yield conn
+            return
+
         conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
         try:
             yield conn
             conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
     else:
         Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(DB_PATH)
@@ -147,17 +244,54 @@ def _placeholders(n: int) -> str:
     return ",".join([_placeholder()] * n)
 
 
-def init_db() -> None:
+def _add_column_if_missing(conn, table: str, column: str, definition: str) -> None:
+    """
+    CREATE TABLE IF NOT EXISTS silently does nothing when the table already
+    exists, so new columns need an explicit ALTER for databases created before
+    the column was added.
+    """
+    if USE_POSTGRES:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
+        return
+
+    existing = {row['name'] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+@st.cache_resource(show_spinner=False)
+def _run_migrations_once() -> bool:
     with get_conn() as conn:
-        conn.execute(POSTGRES_SCHEMA if USE_POSTGRES else SQLITE_SCHEMA)
+        if USE_POSTGRES:
+            conn.execute(POSTGRES_SCHEMA)
+        else:
+            # sqlite3's execute() takes a single statement; the schema is many.
+            conn.executescript(SQLITE_SCHEMA)
+        for stmt in INDEX_STATEMENTS:
+            conn.execute(stmt)
+
+        # Accounts created before passwords existed have an empty hash and are
+        # prompted to set one on their next login rather than being locked out.
+        _add_column_if_missing(conn, 'users', 'password_hash', "TEXT DEFAULT ''")
+    return True
 
 
-def create_user(first_name: str, last_name: str, email: str):
+def init_db() -> None:
+    """
+    Create tables and indexes. app.py calls this on every rerun, so the actual
+    work is cached - otherwise every keystroke in the app fired a dozen DDL
+    round trips at the database.
+    """
+    _run_migrations_once()
+
+
+def create_user(first_name: str, last_name: str, email: str, password_hash: str = ''):
     try:
         with get_conn() as conn:
             conn.execute(
-                f"INSERT INTO users(first_name, last_name, email, created_at) VALUES ({_placeholder()}, {_placeholder()}, {_placeholder()}, {_placeholder()})",
-                (first_name.strip(), last_name.strip(), email.strip().lower(), now_iso()),
+                f"INSERT INTO users(first_name, last_name, email, created_at, password_hash) "
+                f"VALUES ({_placeholder()}, {_placeholder()}, {_placeholder()}, {_placeholder()}, {_placeholder()})",
+                (first_name.strip(), last_name.strip(), email.strip().lower(), now_iso(), password_hash),
             )
         return True
     except Exception as exc:
@@ -165,6 +299,22 @@ def create_user(first_name: str, last_name: str, email: str):
         if "unique" in msg or "duplicate" in msg:
             return False
         raise
+
+
+def set_user_password(user_id: int, password_hash: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            f"UPDATE users SET password_hash = {_placeholder()} WHERE id = {_placeholder()}",
+            (password_hash, user_id),
+        )
+
+
+def clear_user_password(user_id: int) -> None:
+    """
+    Owner-initiated reset. The account keeps its orders and balance but the next
+    login goes through the set-a-password flow.
+    """
+    set_user_password(user_id, '')
 
 
 def get_user_by_email(email: str):
@@ -442,40 +592,37 @@ def get_pending_ball_orders_count() -> int:
     return int(row['total_count'] or 0)
 
 
-def get_grouped_pending_ball_orders():
+def _grouped_pending_ball_query() -> str:
     placeholders = _placeholders(len(BALL_PENDING_STATUSES))
 
     if USE_POSTGRES:
-        query = f"""
-            SELECT
-                product_name,
-                sku,
-                option_value,
-                SUM(quantity) AS total_qty,
-                STRING_AGG(customer_first_name || ' ' || customer_last_name, ', ' ORDER BY customer_first_name, customer_last_name) AS customers
-            FROM orders
-            WHERE product_type = 'bowling_ball'
-              AND status IN ({placeholders})
-            GROUP BY product_name, sku, option_value
-            ORDER BY product_name, option_value
-        """
+        customers = (
+            "STRING_AGG(customer_first_name || ' ' || customer_last_name, ', ' "
+            "ORDER BY customer_first_name, customer_last_name)"
+        )
     else:
-        query = f"""
-            SELECT
-                product_name,
-                sku,
-                option_value,
-                SUM(quantity) AS total_qty,
-                GROUP_CONCAT(customer_first_name || ' ' || customer_last_name, ', ') AS customers
-            FROM orders
-            WHERE product_type = 'bowling_ball'
-              AND status IN ({placeholders})
-            GROUP BY product_name, sku, option_value
-            ORDER BY product_name, option_value
-        """
+        customers = "GROUP_CONCAT(customer_first_name || ' ' || customer_last_name, ', ')"
 
+    return f"""
+        SELECT
+            product_name,
+            sku,
+            option_value,
+            SUM(quantity) AS total_qty,
+            {customers} AS customers
+        FROM orders
+        WHERE product_type = 'bowling_ball'
+          AND status IN ({placeholders})
+        GROUP BY product_name, sku, option_value
+        ORDER BY product_name, option_value
+    """
+
+
+def get_grouped_pending_ball_orders():
     with get_conn() as conn:
-        rows = conn.execute(query, tuple(BALL_PENDING_STATUSES)).fetchall()
+        rows = conn.execute(
+            _grouped_pending_ball_query(), tuple(BALL_PENDING_STATUSES)
+        ).fetchall()
 
     return rows
 
@@ -505,6 +652,264 @@ def _set_app_state(key: str, value: str) -> None:
 
     with get_conn() as conn:
         conn.execute(query, (key, value))
+
+
+PRODUCT_COLUMNS = (
+    'product_url', 'sku', 'name', 'price', 'in_stock', 'is_visible',
+    'main_category', 'sub_category', 'product_type', 'scent', 'image_url',
+)
+
+# Fields the scraper owns. A 'refresh' import overwrites these and leaves
+# everything else (notably is_visible) alone.
+SCRAPED_PRODUCT_COLUMNS = (
+    'sku', 'name', 'price', 'in_stock', 'main_category',
+    'sub_category', 'product_type', 'scent', 'image_url',
+)
+
+# Columns an admin may edit from the Catalog Manager grid.
+EDITABLE_PRODUCT_COLUMNS = (
+    'name', 'sku', 'price', 'in_stock', 'is_visible',
+    'main_category', 'sub_category', 'product_type',
+)
+
+
+def _as_bool(value) -> bool:
+    """SQLite hands booleans back as 0/1, Postgres as real bools."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on', 't'}
+
+
+def _normalize_product(row: dict) -> dict:
+    row = dict(row)
+    row['in_stock'] = _as_bool(row.get('in_stock'))
+    row['is_visible'] = _as_bool(row.get('is_visible'))
+    row['price'] = float(row.get('price') or 0)
+    for key in ('product_url', 'sku', 'name', 'main_category',
+                'sub_category', 'product_type', 'scent', 'image_url'):
+        row[key] = str(row.get(key) or '')
+    return row
+
+
+def get_products(visible_only: bool = False, in_stock_only: bool = False) -> list[dict]:
+    query = "SELECT * FROM products"
+    clauses = []
+    if visible_only:
+        clauses.append("is_visible = " + ("TRUE" if USE_POSTGRES else "1"))
+    if in_stock_only:
+        clauses.append("in_stock = " + ("TRUE" if USE_POSTGRES else "1"))
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY main_category, sub_category, name"
+
+    with get_conn() as conn:
+        rows = conn.execute(query).fetchall()
+    return [_normalize_product(row) for row in rows]
+
+
+def count_products() -> int:
+    with get_conn() as conn:
+        row = conn.execute("SELECT COUNT(*) AS n FROM products").fetchone()
+    return int(row['n'] or 0)
+
+
+def get_product_urls() -> set[str]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT product_url FROM products").fetchall()
+    return {str(row['product_url']) for row in rows}
+
+
+def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '') -> dict:
+    """
+    Load catalog rows into the products table.
+
+    mode:
+      'add_new' - only insert products that aren't already there
+      'refresh' - insert new ones and overwrite scraper-owned fields on the rest,
+                  preserving is_visible so hidden products stay hidden
+      'replace' - wipe the table and reload from scratch
+    """
+    if mode not in {'add_new', 'refresh', 'replace'}:
+        raise ValueError(f'Unknown import mode: {mode}')
+
+    rows = [_normalize_product(row) for row in rows if str(row.get('product_url') or '').strip()]
+    if not rows:
+        return {'inserted': 0, 'updated': 0, 'skipped': 0, 'deleted': 0}
+
+    existing = set() if mode == 'replace' else get_product_urls()
+    incoming = {row['product_url'] for row in rows}
+    inserted = len(incoming - existing)
+    matched = len(incoming & existing)
+
+    columns = list(PRODUCT_COLUMNS) + ['updated_at', 'updated_by']
+    placeholders = _placeholders(len(columns))
+    now = now_iso()
+
+    if mode == 'add_new':
+        conflict = "ON CONFLICT (product_url) DO NOTHING"
+    else:
+        new = 'EXCLUDED' if USE_POSTGRES else 'excluded'
+
+        def assign(col: str) -> str:
+            # An out-of-stock scrape reports no price and sometimes no image.
+            # Keep whatever we already know rather than zeroing it out.
+            if col == 'price':
+                return (f"price = CASE WHEN {new}.price > 0 "
+                        f"THEN {new}.price ELSE products.price END")
+            if col == 'image_url':
+                return (f"image_url = CASE WHEN {new}.image_url <> '' "
+                        f"THEN {new}.image_url ELSE products.image_url END")
+            return f"{col} = {new}.{col}"
+
+        assignments = ', '.join(assign(col) for col in SCRAPED_PRODUCT_COLUMNS)
+        conflict = (
+            f"ON CONFLICT (product_url) DO UPDATE SET {assignments}, "
+            f"updated_at = {new}.updated_at, updated_by = {new}.updated_by"
+        )
+
+    query = (
+        f"INSERT INTO products({', '.join(columns)}) "
+        f"VALUES ({placeholders}) {conflict}"
+    )
+    params = [
+        tuple([row[col] for col in PRODUCT_COLUMNS] + [now, updated_by])
+        for row in rows
+    ]
+
+    deleted = 0
+    with get_conn() as conn:
+        if mode == 'replace':
+            before = conn.execute("SELECT COUNT(*) AS n FROM products").fetchone()
+            deleted = int(before['n'] or 0)
+            conn.execute("DELETE FROM products")
+
+        cur = conn.cursor()
+        cur.executemany(query, params)
+
+    return {
+        'inserted': inserted if mode != 'replace' else len(rows),
+        'updated': matched if mode == 'refresh' else 0,
+        'skipped': matched if mode == 'add_new' else 0,
+        'deleted': deleted,
+    }
+
+
+def update_products(updates: list[dict], updated_by: str = '') -> int:
+    """
+    Apply per-product edits. Each dict needs a product_url plus any subset of
+    EDITABLE_PRODUCT_COLUMNS.
+    """
+    applied = 0
+    now = now_iso()
+
+    with get_conn() as conn:
+        for update in updates:
+            product_url = str(update.get('product_url') or '').strip()
+            if not product_url:
+                continue
+
+            fields = {k: v for k, v in update.items() if k in EDITABLE_PRODUCT_COLUMNS}
+            if not fields:
+                continue
+
+            if 'in_stock' in fields:
+                fields['in_stock'] = _as_bool(fields['in_stock'])
+            if 'is_visible' in fields:
+                fields['is_visible'] = _as_bool(fields['is_visible'])
+            if 'price' in fields:
+                fields['price'] = round(float(fields['price'] or 0), 2)
+
+            assignments = ', '.join(f"{col} = {_placeholder()}" for col in fields)
+            conn.execute(
+                f"UPDATE products SET {assignments}, updated_at = {_placeholder()}, "
+                f"updated_by = {_placeholder()} WHERE product_url = {_placeholder()}",
+                tuple(fields.values()) + (now, updated_by, product_url),
+            )
+            applied += 1
+
+    return applied
+
+
+def set_products_stock(product_urls: Iterable[str], in_stock: bool, updated_by: str = '') -> int:
+    urls = [str(u).strip() for u in product_urls if str(u).strip()]
+    if not urls:
+        return 0
+
+    with get_conn() as conn:
+        conn.execute(
+            f"UPDATE products SET in_stock = {_placeholder()}, updated_at = {_placeholder()}, "
+            f"updated_by = {_placeholder()} WHERE product_url IN ({_placeholders(len(urls))})",
+            [bool(in_stock), now_iso(), updated_by] + urls,
+        )
+    return len(urls)
+
+
+def delete_products(product_urls: Iterable[str]) -> int:
+    urls = [str(u).strip() for u in product_urls if str(u).strip()]
+    if not urls:
+        return 0
+
+    with get_conn() as conn:
+        conn.execute(
+            f"DELETE FROM products WHERE product_url IN ({_placeholders(len(urls))})",
+            urls,
+        )
+    return len(urls)
+
+
+def get_owner_dashboard_data(statuses: Optional[Iterable[str]] = None) -> dict:
+    """
+    Everything the owner dashboard renders, on a single connection.
+
+    The dashboard used to call five separate helpers, each opening its own
+    connection, on every rerun.
+    """
+    ball_placeholders = _placeholders(len(BALL_PENDING_STATUSES))
+    grouped_query = _grouped_pending_ball_query()
+
+    status_list = list(statuses) if statuses else None
+
+    with get_conn() as conn:
+        pending_row = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(quantity), 0) AS total_count
+            FROM orders
+            WHERE product_type = 'bowling_ball'
+              AND status IN ({ball_placeholders})
+            """,
+            tuple(BALL_PENDING_STATUSES),
+        ).fetchone()
+
+        grouped = conn.execute(grouped_query, tuple(BALL_PENDING_STATUSES)).fetchall()
+
+        active = conn.execute(
+            f"SELECT COUNT(*) AS n FROM orders WHERE status IN ({_placeholders(3)})",
+            ('submitted', 'approved', 'ordered'),
+        ).fetchone()
+
+        order_query = "SELECT * FROM orders"
+        order_params: list = []
+        if status_list:
+            order_query += f" WHERE status IN ({_placeholders(len(status_list))})"
+            order_params.extend(status_list)
+        order_query += " ORDER BY timestamp DESC, id DESC"
+        orders = conn.execute(order_query, order_params).fetchall()
+
+        users = conn.execute(
+            "SELECT * FROM users ORDER BY last_name, first_name, email"
+        ).fetchall()
+
+    return {
+        'pending_ball_count': int(pending_row['total_count'] or 0),
+        'grouped_balls': grouped,
+        'active_order_count': int(active['n'] or 0),
+        'orders': orders,
+        'users': users,
+    }
 
 
 def evaluate_ball_batch_notification() -> None:
