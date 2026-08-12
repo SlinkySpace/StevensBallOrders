@@ -1,5 +1,7 @@
 import json
+import re
 import sqlite3
+from collections import Counter
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -885,9 +887,15 @@ def _usable_sku(value) -> str:
     return sku
 
 
-def _rekey_by_sku(rows: list[dict]) -> list[dict]:
+def _normalized_name(value) -> str:
+    """Case and punctuation folded, for comparing product names."""
+    cleaned = re.sub(r'[^a-z0-9]+', ' ', str(value or '').lower())
+    return ' '.join(cleaned.split())
+
+
+def _rekey_to_existing(rows: list[dict]) -> list[dict]:
     """
-    Point incoming rows at the product they already are, matched on SKU.
+    Point incoming rows at the product they already are.
 
     product_url is the table's key, but Storm moved their catalog: products that
     lived at /products/<main>/<sub>/<slug> now also appear at the site root, so
@@ -895,34 +903,52 @@ def _rekey_by_sku(rows: list[dict]) -> list[dict]:
     on URL alone recognised 17 of 241 scraped products; matching on SKU
     recognised 163 of 171, and those agreed on price 159 times out of 161.
 
-    Rows whose SKU is already known keep the stored URL as their key, so they
-    update in place instead of arriving as duplicates.
+    SKU is tried first. Name is the fallback, and only when the name is unique
+    on both sides - without it, every product whose SKU fails to scrape arrives
+    at a new URL, matches nothing, and is inserted again on every single run.
     """
     known = get_products()
     if not known:
         return rows
 
-    by_sku: dict[str, str] = {}
-    for product in known:
-        sku = _usable_sku(product.get('sku'))
-        # Ambiguous SKUs are no better than no SKU, so drop them from the map.
-        if sku:
-            by_sku[sku] = '' if sku in by_sku else str(product['product_url'])
+    def index(pairs):
+        """Map key -> url, blanking any key that appears twice."""
+        table: dict[str, str] = {}
+        for key, url in pairs:
+            if key:
+                table[key] = '' if key in table else url
+        return table
+
+    by_sku = index((_usable_sku(p.get('sku')), str(p['product_url'])) for p in known)
+    by_name = index((_normalized_name(p.get('name')), str(p['product_url'])) for p in known)
+
+    # A name repeated in the incoming file is just as ambiguous as one repeated
+    # in the catalog, so neither side may be relied on alone.
+    incoming_names = Counter(_normalized_name(r.get('name')) for r in rows)
 
     known_urls = {str(p['product_url']) for p in known}
-    rekeyed = 0
+    by_sku_count = by_name_count = 0
 
     for row in rows:
         if row['product_url'] in known_urls:
             continue
+
         stored_url = by_sku.get(_usable_sku(row.get('sku')))
         if stored_url:
             row['product_url'] = stored_url
-            rekeyed += 1
+            by_sku_count += 1
+            continue
 
-    if rekeyed:
-        print(f'[catalog] matched {rekeyed} product(s) to existing rows by SKU '
-              'rather than URL')
+        name = _normalized_name(row.get('name'))
+        if name and incoming_names[name] == 1:
+            stored_url = by_name.get(name)
+            if stored_url:
+                row['product_url'] = stored_url
+                by_name_count += 1
+
+    if by_sku_count or by_name_count:
+        print(f'[catalog] matched {by_sku_count} product(s) by SKU and '
+              f'{by_name_count} by name rather than URL')
     return rows
 
 
@@ -944,7 +970,7 @@ def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '
         return {'inserted': 0, 'updated': 0, 'skipped': 0, 'deleted': 0}
 
     if mode != 'replace':
-        rows = _rekey_by_sku(rows)
+        rows = _rekey_to_existing(rows)
 
     existing = set() if mode == 'replace' else get_product_urls()
     incoming = {row['product_url'] for row in rows}

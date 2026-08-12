@@ -140,6 +140,15 @@ def rows_from_catalog_csv(df: pd.DataFrame) -> list[dict]:
         product_url = str(raw.get('product_url') or '').strip()
         if not product_url or product_url in seen:
             continue
+
+        # A product is addressed by path alone. Storm's ball comparison tool
+        # links out as /ball-compare?item1=BBMVXA once per ball, and an earlier
+        # scrape stored 61 of those as products. The scraper no longer follows
+        # them, but any CSV written before that fix still carries them - and an
+        # import is the wrong place to trust the file.
+        if '?' in product_url:
+            continue
+
         seen.add(product_url)
 
         sku = str(raw.get('sku') or '').strip()
