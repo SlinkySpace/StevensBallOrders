@@ -969,6 +969,14 @@ def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '
             if col == 'image_url':
                 return (f"image_url = CASE WHEN {new}.image_url <> '' "
                         f"THEN {new}.image_url ELSE products.image_url END")
+            # Never let a scrape that could not work out a category overwrite one
+            # already known good. Categories decide the weight/size selector.
+            if col in ('main_category', 'sub_category'):
+                return (f"{col} = CASE WHEN {new}.{col} <> '' AND {new}.{col} <> 'Unknown' "
+                        f"THEN {new}.{col} ELSE products.{col} END")
+            if col == 'product_type':
+                return (f"product_type = CASE WHEN {new}.product_type <> 'general' "
+                        f"THEN {new}.product_type ELSE products.product_type END")
             return f"{col} = {new}.{col}"
 
         assignments = ', '.join(assign(col) for col in SCRAPED_PRODUCT_COLUMNS)

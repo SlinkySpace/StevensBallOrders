@@ -69,9 +69,17 @@ if "product_url" not in df.columns:
 
 df[["main_category", "sub_category"]] = df["product_url"].apply(parse_categories)
 
-# Replace Unknown with previous row's category/subcategory
-df["main_category"] = df["main_category"].replace("Unknown", pd.NA).ffill().fillna("Unknown")
-df["sub_category"] = df["sub_category"].replace("Unknown", pd.NA).ffill().fillna("Unknown")
+# Products whose URL carries no category are left as Unknown rather than
+# inheriting the previous row's.
+#
+# This used to forward-fill, which was harmless when every product sat under
+# /products/<main>/<sub>/. Storm has since moved products to root-level URLs, and
+# the fill then labelled bowling balls "Apparel" or "Shoe Accessories" purely
+# because of what happened to be scraped before them. Unknown is recoverable -
+# catalog.py re-reads the category from the slug - but a confident wrong answer
+# is not.
+df["main_category"] = df["main_category"].fillna("Unknown")
+df["sub_category"] = df["sub_category"].fillna("Unknown")
 
 df.to_csv(OUTPUT_CSV, index=False)
 

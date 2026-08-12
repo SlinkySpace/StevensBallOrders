@@ -24,12 +24,55 @@ CATALOG_DISPLAY_COLUMNS = [
 REQUIRED_CSV_COLUMNS = {'name', 'price', 'sku', 'image_url', 'product_url'}
 
 
+# Storm moved products to root-level URLs whose slug names the category, e.g.
+# /storm-equinox-solid-bowling-ball. Those carry no category in the path, so the
+# slug is the only reliable signal - and getting it wrong matters: product_type
+# decides whether a shopper gets a weight selector, and drives the pending-ball
+# count the batch email depends on.
+SLUG_CATEGORY_HINTS = (
+    ('bowling-ball', 'bowling_ball', 'Equipment', 'Bowling Balls'),
+    ('-ball-roller', 'general', 'Equipment', 'Bowling Bags'),
+    ('-ball-tote', 'general', 'Equipment', 'Bowling Bags'),
+    ('-bowling-bag', 'general', 'Equipment', 'Bowling Bags'),
+    ('-shoe', 'general', 'Equipment', 'Shoes'),
+    ('-tee', 'apparel', 'Merchandise', 'Apparel'),
+    ('-hoodie', 'apparel', 'Merchandise', 'Apparel'),
+    ('-jersey', 'apparel', 'Merchandise', 'Apparel'),
+    ('-hat', 'general', 'Merchandise', 'Accessories'),
+    ('-towel', 'general', 'Bowling Essentials', 'Towels'),
+    ('-glove', 'general', 'Equipment', 'Supports & Gloves'),
+)
+
+
+def categories_from_url(product_url: str):
+    """
+    Best guess at (product_type, main_category, sub_category) from a URL slug,
+    or None when the slug says nothing useful.
+    """
+    slug = str(product_url or '').rstrip('/').split('/')[-1].lower()
+    if not slug:
+        return None
+    for marker, product_type, main_category, sub_category in SLUG_CATEGORY_HINTS:
+        if marker in slug:
+            return product_type, main_category, sub_category
+    return None
+
+
 def classify_product_type(row) -> str:
     main_category = str(row.get('main_category', '')).lower()
     sub_category = str(row.get('sub_category', '')).lower()
     name = str(row.get('name', '')).lower()
+
     if 'bowling ball' in sub_category or 'bowling-ball' in sub_category or 'bowling balls' in sub_category:
         return 'bowling_ball'
+
+    # The path said nothing useful; fall back to the slug.
+    hint = categories_from_url(row.get('product_url'))
+    if hint and (not sub_category or sub_category == 'unknown'):
+        return hint[0]
+    if hint and hint[0] == 'bowling_ball':
+        return 'bowling_ball'
+
     if 'apparel' in sub_category or 'shirt' in name or 'hoodie' in name or 'jersey' in name:
         return 'apparel'
     if main_category == 'merchandise' and 'accessories' not in sub_category:
@@ -109,6 +152,16 @@ def rows_from_catalog_csv(df: pd.DataFrame) -> list[dict]:
             'scent': str(raw.get('scent') or '').strip().replace('nan', ''),
             'image_url': str(raw.get('image_url') or '').strip().replace('nan', ''),
         }
+
+        # A moved product's URL carries no category, and label_cleaning fills the
+        # gap from whatever row came before - which labelled bowling balls as
+        # "Apparel". Prefer what the slug actually says.
+        hint = categories_from_url(product_url)
+        if hint and str(raw.get('product_url', '')).count('/') <= 3:
+            _, main_guess, sub_guess = hint
+            record['main_category'] = main_guess
+            record['sub_category'] = sub_guess
+
         record['product_type'] = classify_product_type(record)
 
         if record['name']:
