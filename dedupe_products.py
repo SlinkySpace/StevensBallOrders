@@ -152,11 +152,21 @@ def find_duplicates(products: list[dict]) -> tuple[list[tuple[dict, list[dict]]]
 def main(argv=None) -> int:
     args = parse_args(argv)
 
-    if not args.local and not os.environ.get('DATABASE_URL'):
-        print('DATABASE_URL is not set. Set it, or pass --local for the local file.',
-              file=sys.stderr)
+    # config also reads .streamlit/secrets.toml, so checking os.environ alone
+    # would refuse to run on a machine configured through the file.
+    from config import DATABASE_URL as CONFIGURED_URL
+
+    if not args.local and not CONFIGURED_URL:
+        print('No DATABASE_URL, in the environment or .streamlit/secrets.toml. '
+              'Set one, or pass --local for the local file.', file=sys.stderr)
         return EXIT_ERROR
+
     if args.local:
+        # Blanking the environment is not enough when the URL came from
+        # secrets.toml: db binds config at import time, so clear it there first
+        # or --local would still operate on production.
+        import config
+        config.DATABASE_URL = ''
         os.environ.pop('DATABASE_URL', None)
 
     from catalog import invalidate_catalog_cache

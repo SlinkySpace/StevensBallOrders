@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import time
+from collections import Counter
 from urllib.parse import urljoin
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
@@ -63,6 +64,17 @@ LOADER_IMAGE_FRAGMENTS = [
     "spinner"
 ]
 
+# Products with no photo of their own fall back to a brand logo, and those live
+# in the CMS asset folder rather than under the product's own contents path.
+# One scrape handed the same Storm.png to 41 products and logo1.png to 61.
+PLACEHOLDER_IMAGE_FRAGMENTS = [
+    "/ckfinder/images/",
+]
+
+# A picture reused by this many products on one listing page is a stand-in, not
+# a product shot. Catches new placeholders without naming them.
+PLACEHOLDER_REUSE_LIMIT = 3
+
 
 def clean_text(value: str) -> str:
     if value is None:
@@ -95,6 +107,14 @@ def is_loader_image(url: str) -> bool:
         return True
     lowered = url.lower()
     return any(fragment in lowered for fragment in LOADER_IMAGE_FRAGMENTS)
+
+
+def is_placeholder_image(url: str) -> bool:
+    """A spinner, or a brand logo standing in for a missing product photo."""
+    if is_loader_image(url):
+        return True
+    lowered = str(url).lower()
+    return any(fragment in lowered for fragment in PLACEHOLDER_IMAGE_FRAGMENTS)
 
 
 def extract_best_image_url(img_locator) -> str:
@@ -431,8 +451,18 @@ def collect_listing_items(page, listing_url: str):
         results.append({
             "listing_url": listing_url,
             "product_url": entry["product_url"],
-            "image_url": urljoin(BASE_DOMAIN, image) if image and not is_loader_image(image) else "",
+            "image_url": urljoin(BASE_DOMAIN, image) if image and not is_placeholder_image(image) else "",
         })
+
+    # Anything repeated across this page is a stand-in whatever its filename, so
+    # drop it and let the detail page supply the real photo.
+    counts = Counter(r["image_url"] for r in results if r["image_url"])
+    reused = {url for url, n in counts.items() if n >= PLACEHOLDER_REUSE_LIMIT}
+    if reused:
+        for result in results:
+            if result["image_url"] in reused:
+                result["image_url"] = ""
+        print(f"[INFO] Ignored {len(reused)} image(s) reused across this page")
 
     print(f"[DEBUG] Found {len(results)} product links")
     return results
@@ -449,11 +479,13 @@ def scrape_detail_image(page, product_url: str) -> str:
         images = page.locator("img")
         count = images.count()
 
-        # Prefer product-like images first
+        # Prefer product-like images first. The placeholder check matters here:
+        # the brand logos live at /contents/ckfinder/images/, so a plain
+        # "contents/" test would happily return the very logo we are avoiding.
         for i in range(count):
             img_locator = images.nth(i)
             candidate = extract_best_image_url(img_locator)
-            if candidate and not is_loader_image(candidate):
+            if candidate and not is_placeholder_image(candidate):
                 lowered = candidate.lower()
                 if (
                     "contents/" in lowered
@@ -463,11 +495,11 @@ def scrape_detail_image(page, product_url: str) -> str:
                 ):
                     return urljoin(BASE_DOMAIN, candidate)
 
-        # Fall back to any non-loader image
+        # Fall back to any image that is not a spinner or a logo
         for i in range(count):
             img_locator = images.nth(i)
             candidate = extract_best_image_url(img_locator)
-            if candidate and not is_loader_image(candidate):
+            if candidate and not is_placeholder_image(candidate):
                 return urljoin(BASE_DOMAIN, candidate)
 
         return ""

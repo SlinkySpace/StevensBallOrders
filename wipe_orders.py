@@ -62,13 +62,22 @@ def backup_orders(orders: list[dict]) -> str:
 def main(argv=None) -> int:
     args = parse_args(argv)
 
-    if not args.local and not os.environ.get('DATABASE_URL'):
-        print('DATABASE_URL is not set.\n'
-              'Set it to wipe the hosted database, or pass --local to wipe the\n'
+    # config also reads .streamlit/secrets.toml, so checking os.environ alone
+    # would refuse to run on a machine configured through the file.
+    from config import DATABASE_URL as CONFIGURED_URL
+
+    if not args.local and not CONFIGURED_URL:
+        print('No DATABASE_URL, in the environment or .streamlit/secrets.toml.\n'
+              'Set one to wipe the hosted database, or pass --local to wipe the\n'
               'local SQLite file instead.', file=sys.stderr)
         return EXIT_ERROR
 
     if args.local:
+        # Clearing the environment is not enough when the URL came from
+        # secrets.toml: db reads config at import time, so blank it there before
+        # db is imported, or --local would still hit production.
+        import config
+        config.DATABASE_URL = ''
         os.environ.pop('DATABASE_URL', None)
 
     from db import get_all_orders, get_all_users, get_conn, _placeholder

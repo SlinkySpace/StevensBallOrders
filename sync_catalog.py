@@ -168,16 +168,20 @@ def report(stats: dict, existing_count: int) -> None:
 def main(argv=None) -> int:
     args = parse_args(argv)
 
-    if not os.environ.get('DATABASE_URL'):
-        print('DATABASE_URL is not set. Refusing to run against the local SQLite '
-              'file by accident.', file=sys.stderr)
+    # Ask config for the effective value rather than reading the environment
+    # directly: it also picks up .streamlit/secrets.toml, so an os.environ check
+    # would refuse to run on a machine configured through the file instead.
+    from config import DATABASE_URL
+
+    if not DATABASE_URL:
+        print('No DATABASE_URL, in the environment or in .streamlit/secrets.toml. '
+              'Refusing to run against the local SQLite file by accident.',
+              file=sys.stderr)
         return EXIT_ERROR
 
-    # Imported here so the DATABASE_URL check above happens first; config reads
-    # the environment at import time.
     from catalog import rows_from_catalog_csv
     from db import (
-        _rekey_by_sku,
+        _rekey_to_existing,
         get_products,
         init_db,
         record_catalog_import,
@@ -199,10 +203,10 @@ def main(argv=None) -> int:
     init_db()
     existing = get_products()
 
-    # Resolve SKU matches up front so the report and the guards see the same
-    # keys the write would use.
+    # Resolve matches up front so the report and the guards see the same keys
+    # the write would use.
     if args.mode != 'replace':
-        rows = _rekey_by_sku(rows)
+        rows = _rekey_to_existing(rows)
 
     print(f'Sync check for {args.csv} (mode: {args.mode})')
     problems, stats = evaluate_guards(rows, existing, args)
