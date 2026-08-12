@@ -54,8 +54,7 @@ def normalize_name(name: str) -> str:
 
 def score(product: dict) -> tuple:
     """Higher sorts first, so the best copy to keep comes out in front."""
-    sku = str(product.get('sku') or '').strip()
-    has_sku = bool(sku) and not any(ch.isspace() for ch in sku)
+    has_sku = bool(real_sku(product))
     edited = str(product.get('updated_by') or '').strip().lower()
     hand_edited = bool(edited) and edited not in {
         'initial import', 'scheduled refresh', 'scheduled sync', 'seed', 'reimport',
@@ -68,9 +67,40 @@ def score(product: dict) -> tuple:
     return (has_sku, hand_edited, has_image, -int(product.get('id', 0)))
 
 
-def real_sku(product: dict) -> str:
+def is_invented_sku(product: dict) -> bool:
+    """
+    True when this SKU was manufactured from the URL rather than read off the page.
+
+    The earlier sku_from_product_url took the first hyphen-token of the slug.
+    Under the old layout that was the SKU (/products/.../bbmveq-equinox ->
+    BBMVEQ), but on Storm's descriptive root-level URLs it yields the brand:
+    /storm-iq-tour-78u-bowling-ball -> STORM, /master-tape-white -> MASTER.
+    Those values are sitting in the database now.
+
+    The test is exact, because it reproduces how they were made: the SKU equals
+    the first token of a root-level slug. Real SKUs only lead a slug under
+    /products/..., where the URL has four segments, so this cannot catch one.
+    """
     sku = str(product.get('sku') or '').strip().upper()
-    return '' if not sku or any(ch.isspace() for ch in sku) else sku
+    if not sku:
+        return False
+
+    from urllib.parse import urlparse
+    parts = [p for p in urlparse(str(product.get('product_url') or '')).path.split('/') if p]
+    if len(parts) != 1:
+        return False
+
+    return sku == parts[0].split('-')[0].strip().upper()
+
+
+def real_sku(product: dict) -> str:
+    """The SKU only when it actually identifies the product."""
+    sku = str(product.get('sku') or '').strip().upper()
+    if not sku or any(ch.isspace() for ch in sku):
+        return ''
+    if is_invented_sku(product):
+        return ''
+    return sku
 
 
 def is_junk(product: dict) -> bool:
@@ -195,6 +225,17 @@ def main(argv=None) -> int:
     else:
         delete_products(urls)
         print(f'\nDeleted {len(urls)} duplicate row(s).')
+
+    # Rows that survive can still carry a manufactured SKU. Left in place it
+    # would keep matching the wrong things on every future sync, so blank it -
+    # no SKU is honest, and the next scrape can fill in the real one.
+    dropped = {p['product_url'] for p in losers}
+    stale = [p for p in get_products()
+             if p['product_url'] not in dropped and is_invented_sku(p)]
+    if stale:
+        update_products([{'product_url': p['product_url'], 'sku': ''} for p in stale],
+                        updated_by='dedupe')
+        print(f'Cleared {len(stale)} invented SKU(s) (STORM, MASTER, ROTO and the like).')
 
     invalidate_catalog_cache()
     return EXIT_OK
