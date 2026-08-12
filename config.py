@@ -55,6 +55,7 @@ OWNER_EMAILS = tuple(_secret(
         'cfolgore@stevens.edu',
         'msantos2@stevens.edu',
         'jwang12@stevens.edu',
+        'mderosa@stevens.edu',
     ]
 ))
 

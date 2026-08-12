@@ -401,10 +401,10 @@ def render_product_card(row: dict, row_key: str):
                          use_container_width=True):
                 add_to_cart({
                     'name': name,
-                    'sku': str(row['sku']),
+                    'sku': str(row.get('sku', '')),
                     'unit_price': price,
-                    'image_url': str(row['image_url']),
-                    'product_url': str(row['product_url']),
+                    'image_url': str(row.get('image_url', '')),
+                    'product_url': str(row.get('product_url', '')),
                     'option_type': option_config['option_type'],
                     'option_value': option_value,
                     'quantity': int(quantity),
