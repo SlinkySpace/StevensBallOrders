@@ -65,7 +65,10 @@ TEAM_ACCESS_CODE = str(_secret("TEAM_ACCESS_CODE", "") or "").strip()
 
 MIN_PASSWORD_LENGTH = int(_secret("MIN_PASSWORD_LENGTH", 8) or 8)
 
-EMAIL_NOTIFICATIONS_ENABLED = _secret_bool("EMAIL_NOTIFICATIONS_ENABLED", True)
+# Off unless switched on deliberately. Sending mail is the one action here that
+# reaches people outside the app and cannot be taken back, so the default should
+# not be the one that does it.
+EMAIL_NOTIFICATIONS_ENABLED = _secret_bool("EMAIL_NOTIFICATIONS_ENABLED", False)
 SMTP_USERNAME = _secret("SMTP_USERNAME", "") or ""
 SMTP_PASSWORD = _secret("SMTP_PASSWORD", "") or ""
 SMTP_HOST = _secret("SMTP_HOST", "smtp.gmail.com") or "smtp.gmail.com"

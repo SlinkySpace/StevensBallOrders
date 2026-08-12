@@ -506,6 +506,61 @@ def scrape_detail_image(page, product_url: str) -> str:
         return ""
 
 
+# Storm runs two product page templates. The absolute XPaths below only match
+# the older one; on the newer pages they hit nothing, so the SKU fell through to
+# "the first h4 on the page" - the shopping cart - and the price fell through to
+# OUT_OF_STOCK, which hid the product from shoppers entirely. That is why the
+# Tropical Surge balls looked missing while the older balls priced correctly.
+#
+# The newer template declares what it is in its own script block, which is more
+# dependable than any selector:
+#     var ITEM_ID    = "BBMVTY"
+#     var ITEM_IMAGE = ".../contents/BBMVTY/BBMVTY.png"
+EXTRACT_DETAIL_JS = r"""
+() => {
+  const html = document.documentElement.innerHTML;
+  const jsVar = (name) => {
+    const m = html.match(new RegExp('var\\s+' + name + '\\s*=\\s*"([^"]*)"'));
+    return m ? m[1].trim() : '';
+  };
+
+  // The price lives with the product, never in the basket summary or the mini
+  // cart - every ".money" and ".price" on a logged-out page belongs to those.
+  const inCart = (el) => !!el.closest(
+    '.preview-cart, .module-basket-summary, .dropdown-toggle, .mini-cart, .cart-totals'
+  );
+  let price = '';
+  const scopes = document.querySelectorAll('.product-shop, .module-product-details, #grid');
+  for (const scope of scopes) {
+    for (const el of scope.querySelectorAll('span, div, p, strong, b')) {
+      if (el.children.length || inCart(el)) continue;
+      const text = (el.textContent || '').trim();
+      const m = text.match(/^\$\s?([\d,]+\.\d{2})$/);
+      if (m && parseFloat(m[1].replace(/,/g, '')) > 0) { price = text; break; }
+    }
+    if (price) break;
+  }
+
+  // "SKU: BBMVTY" sits in the product title block on the new template.
+  let sku = jsVar('ITEM_ID');
+  if (!sku) {
+    for (const el of document.querySelectorAll('h4, .item-code, .product-name *')) {
+      const m = (el.textContent || '').match(/SKU:\s*([A-Za-z0-9._-]+)/);
+      if (m) { sku = m[1]; break; }
+    }
+  }
+
+  return {
+    sku: sku || '',
+    name: jsVar('ITEM_NAME') || jsVar('ITEM_HEADING') ||
+          (document.querySelector('h1') || {}).textContent || '',
+    image: jsVar('ITEM_IMAGE') || '',
+    price: price,
+  };
+}
+"""
+
+
 def parse_sku(raw_text: str) -> str:
     raw_text = clean_text(raw_text)
     if not raw_text:
@@ -547,7 +602,8 @@ def scrape_product_detail(page, product_url: str):
         "name": "",
         "sku": "",
         "price": "OUT_OF_STOCK",
-        "scent": "none"
+        "scent": "none",
+        "image": "",
     }
 
     try:
@@ -561,27 +617,40 @@ def scrape_product_detail(page, product_url: str):
         print(f"[WARN] Could not load {product_url}: {exc}")
         return detail
 
-    name = text_or_empty(page.locator(f"xpath={NAME_XPATH}"))
+    # What the page says about itself, which works on both templates.
+    try:
+        declared = page.evaluate(EXTRACT_DETAIL_JS) or {}
+    except Exception:
+        declared = {}
 
-    # Pull SKU from the full h4 so we get the value, not just the label span
-    sku_raw = text_or_empty(page.locator(f"xpath={SKU_H4_XPATH}"))
-    sku = parse_sku(sku_raw)
+    name = clean_text(declared.get("name") or "")
+    sku = parse_sku(declared.get("sku") or "")
+    detail["image"] = str(declared.get("image") or "").strip()
 
+    # Price takes the long-standing path first. It priced 334 products correctly
+    # on the last run, and money is the one field where a plausible wrong answer
+    # is worse than none - the text search below is a fallback for the pages it
+    # misses, not a replacement.
     price = text_or_empty(page.locator(f"xpath={PRICE_XPATH}"))
-    scent = extract_scent(page)
-
     if not price:
-        price = "OUT_OF_STOCK"
+        price = clean_text(declared.get("price") or "")
+
+    # Fall back to the old template's absolute paths for the rest.
+    if not name:
+        name = text_or_empty(page.locator(f"xpath={NAME_XPATH}"))
+    if not sku:
+        # The full h4, so we get the value rather than just the label span.
+        sku = parse_sku(text_or_empty(page.locator(f"xpath={SKU_H4_XPATH}")))
+
+    scent = extract_scent(page)
 
     if not name:
         name = text_or_empty(page.locator("h1"))
 
     if not sku:
-        # Backup 1: get generic h4 text and strip SKU:
-        sku = parse_sku(text_or_empty(page.locator("h4")))
-
-    if not sku:
-        # Backup 2: get the label span's parent h4 text if possible
+        # Deliberately not "the first h4 on the page": on the newer template
+        # that is the shopping cart, which is how 17 products ended up with a
+        # SKU of "Shopping Cart Cart is Empty".
         try:
             sku_label_locator = page.locator(f"xpath={SKU_LABEL_XPATH}")
             if sku_label_locator.count() > 0:
@@ -589,6 +658,9 @@ def scrape_product_detail(page, product_url: str):
                 sku = parse_sku(parent_text)
         except Exception:
             pass
+
+    if not price:
+        price = "OUT_OF_STOCK"
 
     detail["name"] = name
     detail["sku"] = sku
@@ -659,8 +731,15 @@ def main():
 
                 image_url = item["image_url"]
                 if not is_product_image(image_url):
-                    fallback_image = scrape_detail_image(detail_page, item["product_url"])
-                    image_url = fallback_image if is_product_image(fallback_image) else ""
+                    # The page's own ITEM_IMAGE is authoritative - it is the
+                    # product's picture by definition, so it does not have to
+                    # match the thumbnail path the listing images use.
+                    declared = detail.get("image", "")
+                    if declared and not is_loader_image(declared):
+                        image_url = urljoin(BASE_DOMAIN, declared)
+                    else:
+                        fallback_image = scrape_detail_image(detail_page, item["product_url"])
+                        image_url = fallback_image if is_product_image(fallback_image) else ""
 
                 row = {
                     "listing_url": item["listing_url"],
