@@ -68,7 +68,13 @@ with open('.streamlit/secrets.toml','rb') as f:
 }
 
 Write-Host ''
-python @arguments
+
+# See dedupe-products.ps1: under $ErrorActionPreference = 'Stop', PowerShell 5.1
+# escalates a native command's stderr into a terminating error, and streamlit
+# prints a harmless notice there when imported outside a server.
+$previousPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try { python @arguments } finally { $ErrorActionPreference = $previousPreference }
 $code = $LASTEXITCODE
 
 if ($code -eq 0)      { Write-Host "`nFinished." -ForegroundColor Green }
