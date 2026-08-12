@@ -115,6 +115,26 @@ def is_junk(product: dict) -> bool:
     return '?' in str(product.get('product_url') or '')
 
 
+SHARED_IMAGE_LIMIT = 3
+
+
+def find_shared_images(products: list[dict]) -> dict[str, list[dict]]:
+    """
+    Images used by several products, which means a stand-in rather than a photo.
+
+    Storm serves a brand logo for products with no picture of their own, and one
+    scrape handed the same file to 61 of them. A photo belongs to exactly one
+    product, so anything shared is wrong - and showing the wrong picture is worse
+    than showing none, because it looks deliberate.
+    """
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for product in products:
+        image = str(product.get('image_url') or '').strip()
+        if image:
+            groups[image].append(product)
+    return {img: rows for img, rows in groups.items() if len(rows) >= SHARED_IMAGE_LIMIT}
+
+
 def find_duplicates(products: list[dict]) -> tuple[list[tuple[dict, list[dict]]], list[list[dict]]]:
     """
     Return (mergeable duplicates, groups needing a human).
@@ -176,13 +196,24 @@ def main(argv=None) -> int:
     products = get_products()
     junk = [p for p in products if is_junk(p)]
     duplicates, ambiguous = find_duplicates(products)
+    shared_images = find_shared_images(products)
 
-    if not duplicates and not junk:
+    if not duplicates and not junk and not shared_images:
         print(f'Nothing to clean up among {len(products)} products.')
         if ambiguous:
             print(f'({len(ambiguous)} same-name group(s) left alone - see below.)')
         else:
             return EXIT_OK
+
+    if shared_images:
+        total = sum(len(rows) for rows in shared_images.values())
+        print(f'{total} product(s) share {len(shared_images)} image(s) between them, '
+              'so those are placeholders rather than photos:')
+        for image, rows in list(shared_images.items())[:4]:
+            print(f'     {len(rows):>3} products  {image[-52:]}')
+            print(f'                 e.g. {", ".join(r["name"][:22] for r in rows[:3])}')
+        print('   Their image will be cleared, so they show "no image" rather than '
+              'the wrong one.\n')
 
     if junk:
         print(f'{len(junk)} row(s) that are not products at all '
@@ -240,12 +271,20 @@ def main(argv=None) -> int:
     # would keep matching the wrong things on every future sync, so blank it -
     # no SKU is honest, and the next scrape can fill in the real one.
     dropped = {p['product_url'] for p in losers}
-    stale = [p for p in get_products()
-             if p['product_url'] not in dropped and is_invented_sku(p)]
+    remaining = [p for p in get_products() if p['product_url'] not in dropped]
+
+    stale = [p for p in remaining if is_invented_sku(p)]
     if stale:
         update_products([{'product_url': p['product_url'], 'sku': ''} for p in stale],
                         updated_by='dedupe')
         print(f'Cleared {len(stale)} invented SKU(s) (STORM, MASTER, ROTO and the like).')
+
+    placeholders = find_shared_images(remaining)
+    if placeholders:
+        rows = [p for group in placeholders.values() for p in group]
+        update_products([{'product_url': p['product_url'], 'image_url': ''} for p in rows],
+                        updated_by='dedupe')
+        print(f'Cleared {len(rows)} placeholder image(s) shared between products.')
 
     invalidate_catalog_cache()
     return EXIT_OK

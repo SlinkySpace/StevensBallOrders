@@ -64,9 +64,17 @@ def _editor_frame(df: pd.DataFrame) -> pd.DataFrame:
     return frame.reset_index(drop=True)
 
 
+# image_url is writable through update_products so cleanup tools can clear a
+# placeholder, but this grid must never emit it: the column shown here is a
+# display URL (static/... rewritten to app/static/...), and writing that back
+# would corrupt the stored path.
+GRID_READONLY_COLUMNS = frozenset({'image_url'})
+
+
 def _diff_rows(before: pd.DataFrame, after: pd.DataFrame) -> list[dict]:
     """Rows the admin actually changed, as update dicts keyed by product_url."""
-    tracked = [c for c in EDITABLE_PRODUCT_COLUMNS if c in after.columns]
+    tracked = [c for c in EDITABLE_PRODUCT_COLUMNS
+               if c in after.columns and c not in GRID_READONLY_COLUMNS]
     updates = []
 
     for position, product_url in after['product_url'].items():

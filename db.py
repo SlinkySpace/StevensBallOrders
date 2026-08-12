@@ -822,10 +822,13 @@ SCRAPED_PRODUCT_COLUMNS = (
     'sub_category', 'product_type', 'scent', 'image_url',
 )
 
-# Columns an admin may edit from the Catalog Manager grid.
+# Columns update_products() will write. The Catalog Manager grid exposes most of
+# them; image_url is here so cleanup tools can clear a placeholder, and because
+# it is the only way to give a product a picture Storm does not host. The grid
+# itself keeps it read-only.
 EDITABLE_PRODUCT_COLUMNS = (
     'name', 'sku', 'price', 'in_stock', 'is_visible',
-    'main_category', 'sub_category', 'product_type',
+    'main_category', 'sub_category', 'product_type', 'image_url',
 )
 
 

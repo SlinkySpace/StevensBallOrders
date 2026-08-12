@@ -64,15 +64,24 @@ LOADER_IMAGE_FRAGMENTS = [
     "spinner"
 ]
 
-# Products with no photo of their own fall back to a brand logo, and those live
-# in the CMS asset folder rather than under the product's own contents path.
-# One scrape handed the same Storm.png to 41 products and logo1.png to 61.
-PLACEHOLDER_IMAGE_FRAGMENTS = [
-    "/ckfinder/images/",
-]
+# A real product photo always sits under the product's own thumbnail path:
+#   /contents/<SKU>/thumbnail/big_AC574RD@1.png
+#
+# Anything else is a site asset. Blocklisting those folders one at a time was a
+# losing game - rejecting /ckfinder/images/ simply moved the fallback on to
+# /contents/global/storm-blk-logo.jpeg - so this matches the real thing instead.
+#
+# Measured over two full scrapes, 726 rows: every one of the 363 genuine photos
+# contains /thumbnail/, no /thumbnail/ URL is ever shared between products, and
+# every URL without it was a logo reused 5 to 61 times.
+PRODUCT_IMAGE_MARKER = "/thumbnail/"
 
-# A picture reused by this many products on one listing page is a stand-in, not
-# a product shot. Catches new placeholders without naming them.
+# If the marker ever stops appearing, images vanish rather than going wrong, and
+# this threshold makes the run say so instead of quietly shipping a blank
+# catalog.
+MIN_EXPECTED_IMAGE_RATIO = 0.40
+
+# A picture shared by this many products is a stand-in whatever its path.
 PLACEHOLDER_REUSE_LIMIT = 3
 
 
@@ -109,12 +118,16 @@ def is_loader_image(url: str) -> bool:
     return any(fragment in lowered for fragment in LOADER_IMAGE_FRAGMENTS)
 
 
-def is_placeholder_image(url: str) -> bool:
-    """A spinner, or a brand logo standing in for a missing product photo."""
+def is_product_image(url: str) -> bool:
+    """True only for a picture of the product itself, not a spinner or a logo."""
     if is_loader_image(url):
-        return True
-    lowered = str(url).lower()
-    return any(fragment in lowered for fragment in PLACEHOLDER_IMAGE_FRAGMENTS)
+        return False
+    return PRODUCT_IMAGE_MARKER in str(url).lower()
+
+
+def is_placeholder_image(url: str) -> bool:
+    """Anything that is not a photo of the product."""
+    return not is_product_image(url)
 
 
 def extract_best_image_url(img_locator) -> str:
@@ -479,27 +492,13 @@ def scrape_detail_image(page, product_url: str) -> str:
         images = page.locator("img")
         count = images.count()
 
-        # Prefer product-like images first. The placeholder check matters here:
-        # the brand logos live at /contents/ckfinder/images/, so a plain
-        # "contents/" test would happily return the very logo we are avoiding.
+        # Only a real product photo will do. There is deliberately no looser
+        # second pass: the previous version fell back to "any image that is not
+        # a spinner", which is how every ball without a photo ended up showing
+        # the same site logo. No image beats the wrong image.
         for i in range(count):
-            img_locator = images.nth(i)
-            candidate = extract_best_image_url(img_locator)
-            if candidate and not is_placeholder_image(candidate):
-                lowered = candidate.lower()
-                if (
-                    "contents/" in lowered
-                    or "thumbnail/" in lowered
-                    or "product" in lowered
-                    or "uploads" in lowered
-                ):
-                    return urljoin(BASE_DOMAIN, candidate)
-
-        # Fall back to any image that is not a spinner or a logo
-        for i in range(count):
-            img_locator = images.nth(i)
-            candidate = extract_best_image_url(img_locator)
-            if candidate and not is_placeholder_image(candidate):
+            candidate = extract_best_image_url(images.nth(i))
+            if candidate and is_product_image(candidate):
                 return urljoin(BASE_DOMAIN, candidate)
 
         return ""
@@ -659,10 +658,9 @@ def main():
                 detail = scrape_product_detail(detail_page, item["product_url"])
 
                 image_url = item["image_url"]
-                if (not image_url) or is_loader_image(image_url):
+                if not is_product_image(image_url):
                     fallback_image = scrape_detail_image(detail_page, item["product_url"])
-                    if fallback_image and not is_loader_image(fallback_image):
-                        image_url = fallback_image
+                    image_url = fallback_image if is_product_image(fallback_image) else ""
 
                 row = {
                     "listing_url": item["listing_url"],
@@ -685,6 +683,27 @@ def main():
         print("\n[ERROR] Scraped 0 products. Nothing was written; the previous "
               f"{OUTPUT_CSV} is left untouched.")
         return 2
+
+    # Last net, across the whole run rather than one page: a photo belongs to a
+    # single product, so anything shared is a stand-in that slipped through.
+    counts = Counter(r["image_url"] for r in all_rows if r["image_url"])
+    shared = {url for url, n in counts.items() if n >= PLACEHOLDER_REUSE_LIMIT}
+    if shared:
+        for row in all_rows:
+            if row["image_url"] in shared:
+                row["image_url"] = ""
+        print(f"[INFO] Dropped {len(shared)} image(s) shared between products")
+
+    with_image = sum(1 for r in all_rows if r["image_url"])
+    ratio = with_image / len(all_rows)
+    print(f"[INFO] {with_image} of {len(all_rows)} products have a photo "
+          f"({ratio:.0%}); the rest have none on the site")
+
+    if ratio < MIN_EXPECTED_IMAGE_RATIO:
+        print(f"[WARN] That is below the {MIN_EXPECTED_IMAGE_RATIO:.0%} expected. "
+              f"If Storm moved their images off the '{PRODUCT_IMAGE_MARKER}' path, "
+              "PRODUCT_IMAGE_MARKER needs updating - the catalog will show "
+              "missing images until it is.")
 
     write_csv(all_rows, OUTPUT_CSV)
     print(f"\nDone. Wrote {len(all_rows)} rows to {OUTPUT_CSV}")
