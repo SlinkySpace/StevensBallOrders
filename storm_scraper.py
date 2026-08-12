@@ -163,7 +163,9 @@ EXTRACT_LISTING_ITEMS_JS = """
     'logout','search','contact','about','news','blog','dealers','sitemap',
     'privacy-policy','terms-of-use','terms-and-conditions','terms-of-service',
     'shipping-policy','return-policy','my-account','order-history','contact-us',
-    'about-us','where-to-buy','find-a-dealer','customer-service'
+    'about-us','where-to-buy','find-a-dealer','customer-service',
+    'ball-compare','ball-motion','ball-guide','storm-youth-championships',
+    'about-storm-products','storm-nation-newsletter'
   ]);
 
   const bareHost = (h) => (h || '').replace(/^www\\./, '').toLowerCase();
@@ -177,6 +179,11 @@ EXTRACT_LISTING_ITEMS_JS = """
     // the scraper then tried to navigate to it.
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
     if (bareHost(url.hostname) !== bareHost(location.hostname)) return null;
+    // Product pages are addressed by path alone. The ball comparison tool links
+    // out as /ball-compare?item1=BBMVXA once per ball, and each distinct query
+    // string looked like a separate product - 61 of them were scraped, all
+    // titled "Company".
+    if (url.search) return null;
     const parts = url.pathname.split('/').filter(Boolean);
     return parts.length ? parts : null;
   };

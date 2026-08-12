@@ -110,13 +110,17 @@ def currency(value: float) -> str:
     return f"${value:,.2f}"
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def _static_image_files() -> set[str]:
     """
     Every file under static/, as posix paths relative to the app root.
 
     Used to tell a broken image path from a good one without stat()-ing the
     filesystem once per product card per rerun.
+
+    The TTL matters: a catalog refresh adds image files while the app is
+    running, and a permanently cached listing would keep reporting them as
+    missing - the product would show "No image" even though the file is there.
     """
     static_root = Path(BASE_DIR) / 'static'
     if not static_root.is_dir():

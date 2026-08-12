@@ -82,14 +82,23 @@ def classify_product_type(row) -> str:
 
 def sku_from_product_url(product_url: str) -> str:
     """
-    Recover a SKU from the Storm URL slug, e.g.
-    .../bowling-balls/bbmveq-equinox -> BBMVEQ
+    Recover a SKU from an old-style catalog URL, e.g.
+    /products/equipment/bowling-balls/bbmveq-equinox -> BBMVEQ
 
-    Used to repair rows where the scraper's SKU fallback grabbed the wrong <h4>
-    and stored the page's shopping-cart text instead of the real SKU.
+    Only that layout puts the SKU at the front of the slug. Storm's newer
+    root-level URLs are descriptive - /storm-clear-storm-teal-bowling-ball - and
+    reading the first token there invents a brand name instead: 116 products
+    collapsed onto 9 "SKUs", with BALL covering 61 of them and STORM 36. An
+    empty SKU is far better than a colliding one, since matching treats a
+    duplicate SKU as no match at all.
     """
-    slug = str(product_url or '').rstrip('/').split('/')[-1]
-    first_token = slug.split('-')[0].strip().upper()
+    from urllib.parse import urlparse
+
+    parts = [p for p in urlparse(str(product_url or '')).path.split('/') if p]
+    if len(parts) < 4 or parts[0] != 'products':
+        return ''
+
+    first_token = parts[-1].split('-')[0].strip().upper()
     return first_token if first_token.isalnum() else ''
 
 
