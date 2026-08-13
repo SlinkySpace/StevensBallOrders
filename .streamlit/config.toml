@@ -11,6 +11,22 @@ buttonRadius = "0.5rem"
 showWidgetBorder = true
 showSidebarBorder = true
 
+# No font settings on purpose. The design asks for Source Sans 3, and Streamlit
+# already ships that typeface as its default, bundled locally
+# (SourceSansVF-Upright.woff2) - so the design's font is what you get by doing
+# nothing, with no request to Google on every page load.
+#
+# Setting it explicitly was worse than useless. Two separate traps:
+#   - the usual Google Fonts URL contains commas ("ital,wght@0,400"), and this
+#     setting is parsed as a comma-separated font list, so the URL is split
+#     mid-string and no stylesheet is injected at all;
+#   - even with a comma-free URL, "Source Sans 3" is emitted unquoted, and a
+#     CSS family name containing a space and a digit must be quoted, so the
+#     whole declaration is invalid and every page falls back to Times New Roman.
+#
+# Both were caught by checking the computed font in the browser rather than
+# trusting that the config had been accepted.
+
 [theme.light]
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F4F5F7"

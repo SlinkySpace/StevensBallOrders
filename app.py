@@ -54,15 +54,20 @@ init_session_state()
 refresh_user_session()
 
 ORDER_STATUS_OPTIONS = ['submitted', 'approved', 'ordered', 'fulfilled', 'cancelled']
-CATALOG_COLUMNS = 3
+CATALOG_COLUMNS = 4
 CATALOG_ITEMS_PER_PAGE = 24  # a multiple of CATALOG_COLUMNS, so rows stay full
 PLACEHOLDER_IMAGE = (
     "<div class='product-image product-image--empty'>No image</div>"
 )
 
-# Typography and fixed-height blocks only. Square images plus a two-line clamp on
-# the name make tiles in a row the same height on their own, so there's no
-# flexbox targeting Streamlit's generated class names to break on an upgrade.
+# From the Claude Design pass on the catalog grid. Two things carried over from
+# before, deliberately: the square image and the two-line clamp on the name are
+# what make tiles in a row match height, without any flexbox aimed at
+# Streamlit's generated class names.
+#
+# Every colour is either a translucent neutral or the theme's own primary, so
+# the same rules read correctly in light and dark. The design is specified in
+# light-mode hex; hard-coding those would look broken for anyone on dark.
 CATALOG_CSS = """
 <style>
 .product-image {
@@ -70,37 +75,65 @@ CATALOG_CSS = """
     aspect-ratio: 1 / 1;
     object-fit: contain;
     border-radius: 0.5rem;
+    padding: 0.375rem;
+    box-sizing: border-box;
     background: rgba(128, 128, 128, 0.05);
+    border: 1px solid rgba(128, 128, 128, 0.12);
 }
 .product-image--empty {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(128, 128, 128, 0.7);
-    font-size: 0.8rem;
+    color: rgba(128, 128, 128, 0.65);
+    font-size: 0.78rem;
 }
 .product-name {
     font-weight: 600;
+    font-size: 0.9375rem;
     line-height: 1.3;
-    margin: 0.6rem 0 0.15rem;
+    letter-spacing: -0.005em;
+    margin: 0.7rem 0 0.5rem;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     min-height: 2.6em;
 }
-.product-price {
-    font-size: 1.15rem;
-    font-weight: 700;
-    line-height: 1.2;
+/* Price and SKU share a baseline, so the eye reads price first and the SKU
+   sits back as reference rather than competing with it. */
+.product-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
 }
-.product-meta {
-    font-size: 0.75rem;
-    opacity: 0.6;
-    margin-bottom: 0.5rem;
+.product-price {
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+}
+.product-sku {
+    font-family: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    opacity: 0.55;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 45%;
+}
+/* Tint the popover trigger towards the accent so "Add to cart" reads as the
+   action on the card. */
+[data-testid="stPopover"] button {
+    border-color: color-mix(in srgb, var(--primary-color, #A32638) 28%, transparent);
+    background: color-mix(in srgb, var(--primary-color, #A32638) 5%, transparent);
+}
+[data-testid="stPopover"] button:hover {
+    border-color: var(--primary-color, #A32638);
+    background: color-mix(in srgb, var(--primary-color, #A32638) 11%, transparent);
 }
 </style>
 """
@@ -368,11 +401,15 @@ def render_product_card(row: dict, row_key: str):
     with st.container(border=True):
         show_image(row.get('image_url'), alt=name)
 
+        sku = str(row.get('sku') or '').strip()
         st.markdown(
             f"<div class='product-name' title=\"{html.escape(name, quote=True)}\">"
             f"{html.escape(name)}</div>"
-            f"<div class='product-price'>{currency(price)}</div>"
-            f"<div class='product-meta'>{html.escape(str(row['sku']) or 'No SKU')}</div>",
+            f"<div class='product-line'>"
+            f"<span class='product-price'>{currency(price)}</span>"
+            f"<span class='product-sku' title=\"{html.escape(sku, quote=True)}\">"
+            f"{html.escape(sku)}</span>"
+            f"</div>",
             unsafe_allow_html=True,
         )
 
