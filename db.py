@@ -959,6 +959,53 @@ def _rekey_to_existing(rows: list[dict]) -> list[dict]:
     return rows
 
 
+def _carry_forward(rows: list[dict], stored: list) -> list[dict]:
+    """
+    Apply to a replace the same field preservation a refresh gets for free.
+
+    The ON CONFLICT clause below keeps a stored price when the scrape reports
+    0, a stored category when it reports Unknown, and so on. replace deletes
+    the Storm rows before inserting, so nothing ever conflicts and every one of
+    those CASE WHENs is dead code. Without this, one product whose detail page
+    timed out - price 0, no image - overwrites a good stored price with 0 and
+    blanks its picture, where a refresh would have left both alone.
+
+    Matched on SKU first, then URL. Storm moves product URLs, and a scrape that
+    correctly adopts the new ones would otherwise look like a catalog of
+    entirely new products with nothing to carry forward.
+    """
+    by_sku: dict[str, dict] = {}
+    by_url: dict[str, dict] = {}
+    for row in stored:
+        row = dict(row)
+        by_url[str(row['product_url'])] = row
+        sku = str(row.get('sku') or '').strip().upper()
+        # A SKU shared by several products identifies none of them.
+        if sku:
+            by_sku[sku] = None if sku in by_sku else row
+
+    merged = []
+    for row in rows:
+        row = dict(row)
+        sku = str(row.get('sku') or '').strip().upper()
+        old = by_url.get(row['product_url']) or (by_sku.get(sku) if sku else None)
+        if old:
+            if float(row.get('price') or 0) <= 0:
+                row['price'] = old['price']
+            if not str(row.get('image_url') or '').strip():
+                row['image_url'] = old['image_url']
+            for col in ('main_category', 'sub_category'):
+                if str(row.get(col) or '').strip() in ('', 'Unknown'):
+                    row[col] = old[col]
+            if str(row.get('product_type') or '') == 'general':
+                row['product_type'] = old['product_type']
+            # Hiding a product is a Catalog Manager decision the scrape knows
+            # nothing about, so it always wins.
+            row['is_visible'] = _as_bool(old['is_visible'])
+        merged.append(row)
+    return merged
+
+
 def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '') -> dict:
     """
     Load catalog rows into the products table.
@@ -1024,13 +1071,7 @@ def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '
         f"INSERT INTO products({', '.join(columns)}) "
         f"VALUES ({placeholders}) {conflict}"
     )
-    params = [
-        tuple([row[col] for col in PRODUCT_COLUMNS] + [now, updated_by])
-        for row in rows
-    ]
-
     deleted = 0
-    hidden: list[str] = []
     with get_conn() as conn:
         if mode == 'replace':
             # Clear the Storm catalog so it mirrors the file exactly, including
@@ -1040,35 +1081,32 @@ def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '
             # not being a stormbowling.com one, they never appear in a scrape,
             # and deleting the club's own shirts and raffle items on every sync
             # is not what replacing Storm's catalog means.
-            storm = conn.execute(
-                f"SELECT product_url, is_visible FROM products "
+            #
+            # Read the rows before dropping them: whatever this scrape could
+            # not work out - a price, a category, the hidden flag - is carried
+            # onto the replacements, which is what ON CONFLICT does for a
+            # refresh and cannot do here. The select, the delete and the insert
+            # share one transaction, so a failed insert takes the delete with
+            # it rather than leaving the storefront empty.
+            stored = conn.execute(
+                f"SELECT {', '.join(PRODUCT_COLUMNS)} FROM products "
                 f"WHERE product_url LIKE {_placeholder()}",
                 (f'%{STORM_URL_MARKER}%',),
             ).fetchall()
-            deleted = len(storm)
-
-            # Hiding a product is a deliberate decision by whoever runs the
-            # Catalog Manager, not something the scrape knows about. Carry it
-            # across the wipe for anything Storm still lists, or every sync
-            # would quietly put hidden products back on the shelf.
-            hidden = [row['product_url'] for row in storm if not row['is_visible']]
+            deleted = len(stored)
+            rows = _carry_forward(rows, stored)
 
             conn.execute(
                 f"DELETE FROM products WHERE product_url LIKE {_placeholder()}",
                 (f'%{STORM_URL_MARKER}%',),
             )
 
+        params = [
+            tuple([row[col] for col in PRODUCT_COLUMNS] + [now, updated_by])
+            for row in rows
+        ]
         cur = conn.cursor()
         cur.executemany(query, params)
-
-        if mode == 'replace' and hidden:
-            still_here = [url for url in hidden if url in incoming]
-            if still_here:
-                cur.executemany(
-                    f"UPDATE products SET is_visible = {_placeholder()} "
-                    f"WHERE product_url = {_placeholder()}",
-                    [(False, url) for url in still_here],
-                )
 
     return {
         'inserted': inserted if mode != 'replace' else len(rows),

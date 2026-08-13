@@ -37,6 +37,11 @@ EXIT_ERROR = 3
 # A price is "changed" only past this, so float noise isn't drift.
 PRICE_EPSILON = 0.01
 
+# The drift guard needs a sample worth trusting. Below this share of the
+# products that could have been compared, the reported drift is treated as
+# unmeasured rather than as a clean bill of health.
+MIN_PRICE_COVERAGE = 0.50
+
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
@@ -69,6 +74,10 @@ def parse_args(argv=None):
     parser.add_argument('--max-retire', type=float, default=0.25,
                         help='refuse to retire more than this fraction of the '
                              'catalog in one run (default: 0.25)')
+    parser.add_argument('--max-delete', type=float, default=0.10,
+                        help='replace mode only: fail if more than this fraction '
+                             'of the stored Storm catalog is missing from the '
+                             'file and would be deleted (default: 0.10)')
     parser.add_argument('--updated-by', default=os.environ.get('SYNC_ACTOR', 'scheduled sync'),
                         help='recorded against every row this touches')
     parser.add_argument('--force', action='store_true',
@@ -79,6 +88,11 @@ def parse_args(argv=None):
 
 def evaluate_guards(rows: list[dict], existing: list[dict], args) -> tuple[list[str], dict]:
     """Return (list of guard failures, stats for reporting)."""
+    # Imported here rather than at module scope: db reads config at import
+    # time, and main() checks DATABASE_URL before touching it so a misconfigured
+    # run refuses rather than quietly writing to the local SQLite file.
+    from db import STORM_URL_MARKER
+
     problems: list[str] = []
 
     total = len(rows)
@@ -138,6 +152,28 @@ def evaluate_guards(rows: list[dict], existing: list[dict], args) -> tuple[list[
             'instead of updating it.'
         )
 
+    # replace deletes what a refresh would only have retired, so the volume has
+    # to be bounded here. --max-retire does that job for refresh and is not
+    # consulted in replace mode; --min-rows is an absolute floor that says
+    # nothing about how much of the catalog is about to vanish. A 310-row file
+    # clears a 300-row floor while removing a quarter of a 424-product catalog.
+    going: list[dict] = []
+    stored_storm: list[dict] = []
+    if args.mode == 'replace':
+        stored_storm = [p for p in existing
+                        if STORM_URL_MARKER in str(p['product_url']).lower()]
+        arriving = {row['product_url'] for row in rows}
+        going = [p for p in stored_storm if str(p['product_url']) not in arriving]
+        delete_share = (len(going) / len(stored_storm)) if stored_storm else 0.0
+        if stored_storm and delete_share > args.max_delete:
+            problems.append(
+                f'{len(going)} of {len(stored_storm)} stored Storm products '
+                f'({delete_share:.0%}) are missing from this file and would be '
+                f'deleted outright, over the {args.max_delete:.0%} limit. Storm '
+                'delisting that much at once is far less likely than a scrape '
+                'that came back short.'
+            )
+
     drift = (len(changed) / compared) if compared else 0.0
     if compared and drift > args.max_price_drift:
         problems.append(
@@ -147,6 +183,21 @@ def evaluate_guards(rows: list[dict], existing: list[dict], args) -> tuple[list[
             'site before applying.'
         )
 
+    # A drift check that compared almost nothing is a measurement failure, not a
+    # pass. The guard exists to catch a logged-out scrape pricing the catalog at
+    # retail, and it cannot do that on a sample of six - but it reports 0% drift
+    # and reads as healthy. Storm has already moved their URLs once, which is
+    # exactly what shrinks this sample without anything else looking wrong.
+    expected = min(total, len(existing))
+    if existing and expected and compared < expected * MIN_PRICE_COVERAGE:
+        problems.append(
+            f'Only {compared} of a possible {expected} products could have their '
+            f'price compared ({compared / expected:.0%}), under the '
+            f'{MIN_PRICE_COVERAGE:.0%} minimum. Too few to tell a sponsor-price '
+            'scrape from a retail one, so the drift figure above means little. '
+            'Matching products to the catalog has probably broken.'
+        )
+
     stats = {
         'total': total,
         'out_of_stock': out_of_stock,
@@ -154,7 +205,9 @@ def evaluate_guards(rows: list[dict], existing: list[dict], args) -> tuple[list[
         'compared': compared,
         'changed': changed,
         'drift': drift,
-        'new': len([r for r in rows if r['product_url'] not in {str(p['product_url']) for p in existing}]),
+        'new': len([r for r in rows if r['product_url'] not in known_urls]),
+        'going': going,
+        'stored_storm': len(stored_storm),
     }
     return problems, stats
 
@@ -192,6 +245,7 @@ def main(argv=None) -> int:
 
     from catalog import rows_from_catalog_csv
     from db import (
+        STORM_URL_MARKER,
         _rekey_to_existing,
         get_products,
         init_db,
@@ -215,13 +269,24 @@ def main(argv=None) -> int:
     init_db()
     existing = get_products()
 
-    # Resolve matches up front so the report and the guards see the same keys
-    # the write would use.
-    if args.mode != 'replace':
+    # Resolve matches up front so the report and the guards see the same
+    # products the write will.
+    #
+    # replace deliberately keeps Storm's own URLs rather than the ones already
+    # stored, so there the resolution is applied to a copy and used only to
+    # answer "which stored product is this?". Skipping it entirely, as this
+    # used to, left the guards comparing by literal URL: after Storm moved
+    # their catalog that matched a few dozen rows out of hundreds, so the price
+    # guard was judging a retail-price scrape on a sample far too small to fail
+    # on, and the deletion report called re-keyed products "deleted".
+    if args.mode == 'replace':
+        resolved = _rekey_to_existing([dict(row) for row in rows])
+    else:
         rows = _rekey_to_existing(rows)
+        resolved = rows
 
     print(f'Sync check for {args.csv} (mode: {args.mode})')
-    problems, stats = evaluate_guards(rows, existing, args)
+    problems, stats = evaluate_guards(resolved, existing, args)
     report(stats, len(existing))
 
     if problems:
@@ -240,9 +305,9 @@ def main(argv=None) -> int:
     # these rows are deleted outright, so seeing them before approving matters
     # more here than it did when they were merely marked out of stock.
     if args.mode != 'add_new':
-        incoming = {row['product_url'] for row in rows}
+        incoming = {row['product_url'] for row in resolved}
         storm_rows = [p for p in existing
-                      if 'stormbowling.com' in str(p['product_url']).lower()]
+                      if STORM_URL_MARKER in str(p['product_url']).lower()]
         going = [p for p in storm_rows if str(p['product_url']) not in incoming]
 
         if args.mode == 'refresh' and not args.keep_missing:
@@ -250,6 +315,14 @@ def main(argv=None) -> int:
             verb, consequence = 'marked out of stock', 'kept, with price and category intact'
         elif args.mode == 'replace':
             verb, consequence = 'deleted', 'removed from the catalog entirely'
+            # Counted against resolved identity, so a product that merely moved
+            # to a new Storm URL is not reported as a deletion. Counting raw
+            # URLs called 407 of 460 products doomed when 36 were, which is the
+            # kind of figure that gets a real warning ignored.
+            moved = len([r for r in resolved if r['product_url'] in
+                         {str(p['product_url']) for p in storm_rows}])
+            print(f'\n  {moved} product(s) in this file matched a stored product '
+                  'and will be re-keyed to their current Storm URL, not deleted.')
         else:
             going = []
             verb = consequence = ''

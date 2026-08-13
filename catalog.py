@@ -120,6 +120,19 @@ def parse_price(raw) -> tuple[float, bool]:
     return (value, True) if value > 0 else (0.0, False)
 
 
+# Kept in step with storm_scraper.THROTTLE_MARKERS, but deliberately duplicated
+# rather than imported: catalog.py is loaded by the Streamlit app, and the
+# scraper pulls in Playwright.
+HOLDING_PAGE_NAMES = ('busy in processing', 'please wait', 'too many requests',
+                      'access denied', 'are you a robot')
+
+
+def is_holding_page_name(name: str) -> bool:
+    """True when a scraped 'product name' is really an interstitial page."""
+    lowered = str(name or '').strip().lower()
+    return any(marker in lowered for marker in HOLDING_PAGE_NAMES)
+
+
 def rows_from_catalog_csv(df: pd.DataFrame) -> list[dict]:
     """Turn a scraper CSV into rows ready for db.upsert_products()."""
     missing = REQUIRED_CSV_COLUMNS - set(df.columns)
@@ -181,6 +194,15 @@ def rows_from_catalog_csv(df: pd.DataFrame) -> list[dict]:
             record['sub_category'] = sub_guess
 
         record['product_type'] = classify_product_type(record)
+
+        # Storm serves a "Busy in processing" holding page under load, and a
+        # scrape that reads it gets that text as the product name. The scraper
+        # retries and skips these now, but two such rows reached the catalog
+        # before it did, replacing real products with a price of OUT_OF_STOCK.
+        # An import is the wrong place to trust the file: refusing them here
+        # means no future variation of that page can rename a product either.
+        if is_holding_page_name(record['name']):
+            continue
 
         if record['name']:
             rows.append(record)
