@@ -53,7 +53,12 @@ CATEGORY_ROOTS = [
     "https://www.stormbowling.com/products/bowling-essentials/",
     "https://www.stormbowling.com/products/merchandise/",
 ]
-CATEGORY_PAGE_SIZE = 200
+# Storm ignores per_page above its own default: asking for 200 still returned 24,
+# so seven categories came back truncated and the scrape found 268 products
+# instead of 424. Each category is paged through instead, until a page adds
+# nothing new.
+CATEGORY_PAGE_SIZE = 24
+CATEGORY_MAX_PAGES = 12
 USE_CATEGORY_WALK = _env_flag("SCRAPER_CATEGORY_WALK", True)
 
 # Listing page
@@ -883,23 +888,37 @@ def main():
         sources = []
         if USE_CATEGORY_WALK:
             for category in discover_category_pages(listing_page):
-                sources.append({
-                    "url": f"{category['url']}?per_page={CATEGORY_PAGE_SIZE}",
-                    "main_category": category["main_category"],
-                    "sub_category": category["sub_category"],
-                })
+                # Pages are added up front and the loop below stops early for a
+                # category once one adds nothing new, so a short category costs
+                # one wasted request rather than twelve.
+                for page_no in range(1, CATEGORY_MAX_PAGES + 1):
+                    sources.append({
+                        "url": f"{category['url']}?per_page={CATEGORY_PAGE_SIZE}&page={page_no}",
+                        "main_category": category["main_category"],
+                        "sub_category": category["sub_category"],
+                        "group": category["url"],
+                        "page_no": page_no,
+                    })
         if not sources:
             print("[WARN] No categories found, falling back to the numbered listing pages")
             sources = [
-                {"url": LISTING_URL_TEMPLATE.format(page=n), "main_category": "", "sub_category": ""}
+                {"url": LISTING_URL_TEMPLATE.format(page=n), "main_category": "",
+                 "sub_category": "", "group": "", "page_no": n}
                 for n in range(START_PAGE, END_PAGE + 1)
             ]
 
         seen_products: set[str] = set()
+        exhausted: set[str] = set()
 
         for position, source in enumerate(sources, start=1):
+            # Once a category runs out, skip the rest of its pages.
+            if source.get("group") and source["group"] in exhausted:
+                continue
+
             listing_url = source["url"]
             label = source["sub_category"] or f"page {position}"
+            if source.get("page_no", 1) > 1:
+                label += f" p{source['page_no']}"
             print(f"[INFO] [{position}/{len(sources)}] {label}: {listing_url}")
 
             listing_items = collect_listing_items(listing_page, listing_url)
@@ -934,6 +953,12 @@ def main():
             # wins so it is only fetched and priced once.
             listing_items = [i for i in listing_items if i["product_url"] not in seen_products]
             seen_products.update(i["product_url"] for i in listing_items)
+
+            # Nothing new means this category has no further pages. Storm serves
+            # the last page again rather than an empty one when you overshoot,
+            # so "no new products" is the reliable end marker, not "no products".
+            if not listing_items and source.get("group"):
+                exhausted.add(source["group"])
 
             print(f"[INFO] {len(listing_items)} new product(s) in {label}")
 
