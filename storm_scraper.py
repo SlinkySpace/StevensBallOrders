@@ -561,6 +561,23 @@ EXTRACT_DETAIL_JS = r"""
 """
 
 
+# Storm throttles a fast scraper by serving a holding page. It returns HTTP 200
+# and the old code stored it as a product: two rows came back named "Busy in
+# processing", losing prices they had had the run before. Silent corruption is
+# worse than a slow scrape, so these are detected and retried.
+THROTTLE_MARKERS = ("busy in processing", "please wait", "too many requests")
+THROTTLE_RETRIES = 3
+THROTTLE_BACKOFF_MS = 4000
+
+
+def looks_throttled(page) -> bool:
+    try:
+        heading = (page.inner_text("body", timeout=4000) or "")[:600].lower()
+    except Exception:
+        return False
+    return any(marker in heading for marker in THROTTLE_MARKERS)
+
+
 def parse_sku(raw_text: str) -> str:
     raw_text = clean_text(raw_text)
     if not raw_text:
@@ -606,15 +623,29 @@ def scrape_product_detail(page, product_url: str):
         "image": "",
     }
 
-    try:
-        page.goto(product_url, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(1000)
-    except PlaywrightTimeoutError:
-        print(f"[WARN] Timeout loading product page: {product_url}")
-        return detail
-    except Exception as exc:
-        # One unusable link must not end a 25 minute scrape.
-        print(f"[WARN] Could not load {product_url}: {exc}")
+    for attempt in range(THROTTLE_RETRIES):
+        try:
+            page.goto(product_url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1000)
+        except PlaywrightTimeoutError:
+            print(f"[WARN] Timeout loading product page: {product_url}")
+            return detail
+        except Exception as exc:
+            # One unusable link must not end a 25 minute scrape.
+            print(f"[WARN] Could not load {product_url}: {exc}")
+            return detail
+
+        if not looks_throttled(page):
+            break
+
+        wait = THROTTLE_BACKOFF_MS * (attempt + 1)
+        print(f"[WARN] Throttled on {product_url}, waiting {wait}ms "
+              f"(attempt {attempt + 1}/{THROTTLE_RETRIES})")
+        page.wait_for_timeout(wait)
+    else:
+        # Returning the holding page's text as a product is how two rows ended
+        # up named "Busy in processing" with their prices wiped.
+        print(f"[WARN] Still throttled, skipping {product_url}")
         return detail
 
     # What the page says about itself, which works on both templates.
