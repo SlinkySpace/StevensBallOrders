@@ -83,6 +83,14 @@ jobs:
                              catalog.py db.py app.py catalog_admin.py auth.py \
                              config.py email_utils.py dedupe_products.py wipe_orders.py
 
+      # Same reasoning as the check above, one level up: these cover the merge
+      # modes and the guards that decide whether a scrape is allowed to touch
+      # the catalog at all. Cheaper to find a break here than after the scrape
+      # has run and the write is the next step. They use a throwaway SQLite
+      # file and never reach the network or the hosted database.
+      - name: Run the test suite
+        run: python tests/run_all.py
+
       - name: Restore the Storm login session
         env:
           STORM_AUTH_STATE: ${{ secrets.STORM_AUTH_STATE }}
