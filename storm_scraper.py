@@ -41,6 +41,21 @@ USE_EDGE_CHANNEL = _env_flag("SCRAPER_USE_EDGE", True)
 
 LISTING_URL_TEMPLATE = "https://www.stormbowling.com/products/24/1/{page}/"
 
+# Walking the category tree instead of the numbered listing pages. Each
+# sub-category page states what it holds, so main/sub category come from the URL
+# we asked for rather than being guessed from a product slug afterwards - which
+# is what left 79 products filed under Unknown.
+#
+# per_page asks for the whole category in one response, so a category is one
+# request rather than several, which also means less throttling.
+CATEGORY_ROOTS = [
+    "https://www.stormbowling.com/products/equipment/",
+    "https://www.stormbowling.com/products/bowling-essentials/",
+    "https://www.stormbowling.com/products/merchandise/",
+]
+CATEGORY_PAGE_SIZE = 200
+USE_CATEGORY_WALK = _env_flag("SCRAPER_CATEGORY_WALK", True)
+
 # Listing page
 LIST_CONTAINER_XPATH = "/html/body/div[3]/div/div/div/div[2]/div[2]/div/div[3]/div/div/div/div/div[1]/form/ul"
 
@@ -355,6 +370,60 @@ def looks_logged_out(page) -> bool:
     has_login_prompt = any(marker in header for marker in LOGGED_OUT_MARKERS)
     has_account_hint = any(word in header for word in ('logout', 'log out', 'my account', 'sign out'))
     return has_login_prompt and not has_account_hint
+
+
+def _title_case(slug: str) -> str:
+    """bowling-balls -> Bowling Balls"""
+    return " ".join(word.capitalize() for word in str(slug).split("-") if word)
+
+
+def discover_category_pages(page) -> list[dict]:
+    """
+    Find every sub-category listing, e.g. /products/equipment/bowling-balls/.
+
+    Discovered rather than hard-coded, so a category Storm adds is picked up
+    without a code change.
+    """
+    found: dict[str, dict] = {}
+
+    for root in CATEGORY_ROOTS:
+        try:
+            page.goto(root, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(900)
+            dismiss_cookie_banner(page)
+        except Exception as exc:
+            print(f"[WARN] Could not open {root}: {exc}")
+            continue
+
+        try:
+            hrefs = page.eval_on_selector_all(
+                "a[href]", "els => els.map(e => e.getAttribute('href'))"
+            ) or []
+        except Exception:
+            hrefs = []
+
+        for href in hrefs:
+            if not href:
+                continue
+            try:
+                path = urlparse(urljoin(BASE_DOMAIN, href)).path
+            except ValueError:
+                continue
+            parts = [p for p in path.split("/") if p]
+            # /products/<main>/<sub>/ and nothing deeper
+            if len(parts) != 3 or parts[0] != "products":
+                continue
+
+            url = f"{BASE_DOMAIN}/products/{parts[1]}/{parts[2]}/"
+            found.setdefault(url, {
+                "url": url,
+                "main_category": _title_case(parts[1]),
+                "sub_category": _title_case(parts[2]),
+            })
+
+    categories = sorted(found.values(), key=lambda c: (c["main_category"], c["sub_category"]))
+    print(f"[INFO] Found {len(categories)} sub-categories")
+    return categories
 
 
 def scroll_listing_page(page):
@@ -701,7 +770,8 @@ def scrape_product_detail(page, product_url: str):
 
 
 def write_csv(rows, output_csv):
-    fieldnames = ["listing_url", "product_url", "image_url", "name", "sku", "price", "scent"]
+    fieldnames = ["listing_url", "product_url", "image_url", "name", "sku", "price",
+                  "scent", "main_category", "sub_category"]
     with open(output_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -721,9 +791,29 @@ def main():
         listing_page = context.new_page()
         detail_page = context.new_page()
 
-        for page_num in range(START_PAGE, END_PAGE + 1):
-            listing_url = LISTING_URL_TEMPLATE.format(page=page_num)
-            print(f"[INFO] Listing page {page_num}: {listing_url}")
+        # Walk the category tree, which labels each product as it goes. Falls
+        # back to the numbered listing pages if no categories can be read.
+        sources = []
+        if USE_CATEGORY_WALK:
+            for category in discover_category_pages(listing_page):
+                sources.append({
+                    "url": f"{category['url']}?per_page={CATEGORY_PAGE_SIZE}",
+                    "main_category": category["main_category"],
+                    "sub_category": category["sub_category"],
+                })
+        if not sources:
+            print("[WARN] No categories found, falling back to the numbered listing pages")
+            sources = [
+                {"url": LISTING_URL_TEMPLATE.format(page=n), "main_category": "", "sub_category": ""}
+                for n in range(START_PAGE, END_PAGE + 1)
+            ]
+
+        seen_products: set[str] = set()
+
+        for position, source in enumerate(sources, start=1):
+            listing_url = source["url"]
+            label = source["sub_category"] or f"page {position}"
+            print(f"[INFO] [{position}/{len(sources)}] {label}: {listing_url}")
 
             listing_items = collect_listing_items(listing_page, listing_url)
 
@@ -732,7 +822,7 @@ def main():
             # happened: a logged-out scrape still returns links, it just prices
             # them at retail instead of the team's sponsor rate - and then spent
             # 42 minutes collecting the wrong numbers.
-            if page_num == START_PAGE:
+            if position == 1:
                 if looks_logged_out(listing_page):
                     browser.close()
                     print(
@@ -753,7 +843,12 @@ def main():
                     print("[WARN] First listing page returned no products while apparently "
                           "signed in - the page layout may have changed.")
 
-            print(f"[INFO] Found {len(listing_items)} products on page {page_num}")
+            # A product can sit in more than one category listing; the first one
+            # wins so it is only fetched and priced once.
+            listing_items = [i for i in listing_items if i["product_url"] not in seen_products]
+            seen_products.update(i["product_url"] for i in listing_items)
+
+            print(f"[INFO] {len(listing_items)} new product(s) in {label}")
 
             for idx, item in enumerate(listing_items, start=1):
                 print(f"   [{idx}/{len(listing_items)}] {item['product_url']}")
@@ -779,7 +874,11 @@ def main():
                     "name": detail["name"],
                     "sku": detail["sku"],
                     "price": detail["price"],
-                    "scent": detail["scent"]
+                    "scent": detail["scent"],
+                    # From the category page this came off, so it is known
+                    # rather than inferred from the product slug afterwards.
+                    "main_category": source["main_category"],
+                    "sub_category": source["sub_category"],
                 }
                 all_rows.append(row)
 

@@ -67,19 +67,31 @@ if df.empty:
 if "product_url" not in df.columns:
     raise SystemExit(f"{INPUT_CSV} has no product_url column: {sorted(df.columns)}")
 
-df[["main_category", "sub_category"]] = df["product_url"].apply(parse_categories)
-
-# Products whose URL carries no category are left as Unknown rather than
-# inheriting the previous row's.
+# The scraper now walks the category tree, so it already knows which category
+# each product was listed under. Only fill in what it could not supply.
 #
-# This used to forward-fill, which was harmless when every product sat under
-# /products/<main>/<sub>/. Storm has since moved products to root-level URLs, and
-# the fill then labelled bowling balls "Apparel" or "Shoe Accessories" purely
-# because of what happened to be scraped before them. Unknown is recoverable -
-# catalog.py re-reads the category from the slug - but a confident wrong answer
-# is not.
-df["main_category"] = df["main_category"].fillna("Unknown")
-df["sub_category"] = df["sub_category"].fillna("Unknown")
+# Deriving from the URL is the fallback, and it must not forward-fill. It used
+# to, which was harmless when every product sat under /products/<main>/<sub>/;
+# once Storm moved products to root-level URLs the fill labelled bowling balls
+# "Apparel" or "Shoe Accessories" purely from whatever was scraped before them.
+# Unknown is recoverable - catalog.py re-reads the category from the slug - but a
+# confident wrong answer is not.
+derived = df["product_url"].apply(parse_categories)
+derived.columns = ["main_derived", "sub_derived"]
+df = pd.concat([df, derived], axis=1)
+
+for column, fallback in (("main_category", "main_derived"), ("sub_category", "sub_derived")):
+    if column not in df.columns:
+        df[column] = pd.NA
+    known = df[column].astype("string").str.strip()
+    known = known.mask(known.isin(["", "Unknown", "nan", "None"]))
+    df[column] = known.fillna(df[fallback]).fillna("Unknown")
+
+df = df.drop(columns=["main_derived", "sub_derived"])
+
+from_scraper = (df["sub_category"] != "Unknown").sum()
+print(f"{from_scraper} of {len(df)} products have a category; "
+      f"{len(df) - from_scraper} unknown")
 
 df.to_csv(OUTPUT_CSV, index=False)
 
