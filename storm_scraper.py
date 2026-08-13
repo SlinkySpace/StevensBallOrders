@@ -593,21 +593,40 @@ EXTRACT_DETAIL_JS = r"""
     return m ? m[1].trim() : '';
   };
 
-  // The price lives with the product, never in the basket summary or the mini
-  // cart - every ".money" and ".price" on a logged-out page belongs to those.
+  // Storm renders the product's price into <span class="product_pricetag">.
+  // Logged out it holds just "$" - the amount is filled in for a signed-in
+  // account - which is why a logged-out page looks priceless.
+  //
+  // Everything else that looks like money belongs to the basket: .money and
+  // .price are the mini cart and its totals, and .product-price-total /
+  // .cart-price-total are cart line sums.
   const inCart = (el) => !!el.closest(
     '.preview-cart, .module-basket-summary, .dropdown-toggle, .mini-cart, .cart-totals'
   );
+  const amount = (el) => {
+    if (!el || inCart(el)) return '';
+    const m = (el.textContent || '').trim().match(/\$\s?([\d,]+\.\d{2})/);
+    return m && parseFloat(m[1].replace(/,/g, '')) > 0 ? '$' + m[1] : '';
+  };
+
   let price = '';
-  const scopes = document.querySelectorAll('.product-shop, .module-product-details, #grid');
-  for (const scope of scopes) {
-    for (const el of scope.querySelectorAll('span, div, p, strong, b')) {
-      if (el.children.length || inCart(el)) continue;
-      const text = (el.textContent || '').trim();
-      const m = text.match(/^\$\s?([\d,]+\.\d{2})$/);
-      if (m && parseFloat(m[1].replace(/,/g, '')) > 0) { price = text; break; }
-    }
+  for (const el of document.querySelectorAll('.product_pricetag')) {
+    price = amount(el);
     if (price) break;
+  }
+
+  // Last resort, kept narrow so the "FREE SHIPPING OVER $75" banner cannot win.
+  if (!price) {
+    for (const scope of document.querySelectorAll('.product-shop, .module-product-details')) {
+      for (const el of scope.querySelectorAll('span, strong, b')) {
+        if (el.children.length) continue;
+        const text = (el.textContent || '').trim();
+        if (!/^\$\s?[\d,]+\.\d{2}$/.test(text)) continue;
+        price = amount(el);
+        if (price) break;
+      }
+      if (price) break;
+    }
   }
 
   // "SKU: BBMVTY" sits in the product title block on the new template.
@@ -637,6 +656,10 @@ EXTRACT_DETAIL_JS = r"""
 THROTTLE_MARKERS = ("busy in processing", "please wait", "too many requests")
 THROTTLE_RETRIES = 3
 THROTTLE_BACKOFF_MS = 4000
+
+# How long to let .product_pricetag fill in before deciding a product has no
+# price. Generous: a wrong OUT_OF_STOCK hides the product from the whole team.
+PRICE_WAIT_MS = 8000
 
 
 def looks_throttled(page) -> bool:
@@ -716,6 +739,20 @@ def scrape_product_detail(page, product_url: str):
         # up named "Busy in processing" with their prices wiped.
         print(f"[WARN] Still throttled, skipping {product_url}")
         return detail
+
+    # The amount is written into .product_pricetag after the page loads, so
+    # reading straight after domcontentloaded caught an empty "$". Wait for a
+    # digit to appear rather than guessing at a sleep.
+    try:
+        page.wait_for_function(
+            """() => [...document.querySelectorAll('.product_pricetag')]
+                     .some(el => /\\$\\s?[\\d,]+\\.\\d{2}/.test(el.textContent || ''))""",
+            timeout=PRICE_WAIT_MS,
+        )
+    except Exception:
+        # Genuinely unpriced products never populate it; carry on and let the
+        # extraction below decide.
+        pass
 
     # What the page says about itself, which works on both templates.
     try:
