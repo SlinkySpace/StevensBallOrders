@@ -60,15 +60,46 @@ PLACEHOLDER_IMAGE = (
     "<div class='product-image product-image--empty'>No image</div>"
 )
 
-# From the Claude Design pass on the catalog grid. Two things carried over from
-# before, deliberately: the square image and the two-line clamp on the name are
-# what make tiles in a row match height, without any flexbox aimed at
-# Streamlit's generated class names.
+# Streamlit 1.55 publishes no theme CSS variables - the only custom property on
+# the page is --overlay-top - so a rule written as var(--text-color, #16181D)
+# silently uses the fallback forever, and looks wrong for anyone on dark.
 #
-# Every colour is either a translucent neutral or the theme's own primary, so
-# the same rules read correctly in light and dark. The design is specified in
-# light-mode hex; hard-coding those would look broken for anyone on dark.
-CATALOG_CSS = """
+# The theme is known on the server instead: st.context.theme reports which one
+# this session is using, and the palettes below mirror .streamlit/config.toml.
+# They are published as our own variables, which the stylesheet can then rely
+# on. Keep these in step with config.toml if the theme there changes.
+THEME_PALETTES = {
+    'light': {'text': '#16181D', 'border': '#E3E5EA'},
+    'dark': {'text': '#ECEDEF', 'border': '#2E323A'},
+}
+
+
+def theme_variables() -> str:
+    """A :root block carrying the active theme's colours."""
+    try:
+        active = str(getattr(st.context.theme, 'type', '') or '').lower()
+    except Exception:
+        active = ''
+    palette = THEME_PALETTES.get(active, THEME_PALETTES['light'])
+    primary = st.get_option('theme.primaryColor') or '#A32638'
+    return (
+        "<style>:root{"
+        f"--app-text:{palette['text']};"
+        f"--app-border:{palette['border']};"
+        f"--app-primary:{primary};"
+        "}</style>"
+    )
+
+
+# From the Claude Design pass on the catalog grid, extended to the rest of the
+# app. Two things carried over from before, deliberately: the square image and
+# the two-line clamp on the name are what make tiles in a row match height,
+# without any flexbox aimed at Streamlit's generated class names.
+#
+# Neutrals stay translucent grey so they read on either theme without knowing
+# which one is active; anything that needs a real colour uses the variables
+# above.
+APP_CSS = """
 <style>
 .product-image {
     width: 100%;
@@ -128,15 +159,249 @@ CATALOG_CSS = """
 /* Tint the popover trigger towards the accent so "Add to cart" reads as the
    action on the card. */
 [data-testid="stPopover"] button {
-    border-color: color-mix(in srgb, var(--primary-color, #A32638) 28%, transparent);
-    background: color-mix(in srgb, var(--primary-color, #A32638) 5%, transparent);
+    border-color: color-mix(in srgb, var(--app-primary) 28%, transparent);
+    background: color-mix(in srgb, var(--app-primary) 5%, transparent);
 }
 [data-testid="stPopover"] button:hover {
-    border-color: var(--primary-color, #A32638);
-    background: color-mix(in srgb, var(--primary-color, #A32638) 11%, transparent);
+    border-color: var(--app-primary);
+    background: color-mix(in srgb, var(--app-primary) 11%, transparent);
 }
+
+/* ---- shared across pages ---------------------------------------------- */
+
+/* One page header treatment everywhere, so Cart and Order History announce
+   themselves the same way the Catalog does. */
+.page-head {
+    font-size: 1.85rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0 0 0.15rem;
+}
+.page-sub {
+    font-size: 0.875rem;
+    opacity: 0.62;
+    margin: 0 0 1.15rem;
+}
+
+/* Order status, as a pill rather than a bare word. Each status keeps its own
+   hue at a fixed low alpha, which stays legible on both themes - a solid fill
+   would need a different colour per theme to keep its contrast. */
+.status-pill {
+    display: inline-block;
+    padding: 0.16rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: 1px solid;
+}
+/* Each status keeps its hue, but the text colour is mixed towards the theme's
+   own text colour: near-black on light, near-white on dark. One declaration
+   then stays readable on both, and it follows the theme Streamlit actually
+   gave this session rather than the reader's OS preference, which are not
+   always the same thing. */
+.status-submitted {
+    color: color-mix(in srgb, #D69E2E 58%, var(--app-text));
+    background: rgba(214, 158, 46, 0.13);
+    border-color: rgba(214, 158, 46, 0.35);
+}
+.status-approved {
+    color: color-mix(in srgb, #4299E1 58%, var(--app-text));
+    background: rgba(66, 153, 225, 0.13);
+    border-color: rgba(66, 153, 225, 0.35);
+}
+.status-ordered {
+    color: color-mix(in srgb, #805AD5 58%, var(--app-text));
+    background: rgba(128, 90, 213, 0.13);
+    border-color: rgba(128, 90, 213, 0.35);
+}
+.status-fulfilled {
+    color: color-mix(in srgb, #48BB78 58%, var(--app-text));
+    background: rgba(72, 187, 120, 0.14);
+    border-color: rgba(72, 187, 120, 0.36);
+}
+.status-cancelled {
+    color: color-mix(in srgb, #E53E3E 55%, var(--app-text));
+    background: rgba(197, 48, 48, 0.11);
+    border-color: rgba(197, 48, 48, 0.30);
+}
+
+/* Summary row above an order list: the same tabular figures as a product
+   price, so money reads consistently wherever it appears. */
+.summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2.25rem;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 1rem;
+    border: 1px solid rgba(128, 128, 128, 0.16);
+    border-radius: 0.6rem;
+    background: rgba(128, 128, 128, 0.04);
+}
+.summary-label {
+    font-size: 0.6875rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin-bottom: 0.2rem;
+}
+.summary-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+}
+.summary-value--accent { color: var(--app-primary); }
+
+/* The header line of one order. Sits above a collapsed item table, so it
+   carries everything worth scanning: who, when, how much, what state. */
+.order-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.8rem;
+    margin-bottom: 0.15rem;
+}
+.order-id {
+    font-weight: 700;
+    font-size: 1.02rem;
+    letter-spacing: -0.01em;
+}
+.order-total {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+    font-size: 1.05rem;
+}
+.order-meta {
+    font-size: 0.8125rem;
+    opacity: 0.6;
+}
+.order-customer {
+    font-weight: 600;
+    font-size: 0.8125rem;
+    opacity: 0.85;
+}
+
+/* An empty cart or an empty history is a normal state, not a warning, and
+   st.info's blue bar reads as though something needs attention. */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    border: 1px dashed rgba(128, 128, 128, 0.28);
+    border-radius: 0.75rem;
+    background: rgba(128, 128, 128, 0.03);
+}
+/* A cart line names the product once, at full length - unlike a catalog tile,
+   which clamps to two lines to keep a row of tiles the same height. */
+.cart-item-name {
+    font-weight: 650;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.3rem;
+}
+.cart-item-meta {
+    font-size: 0.8125rem;
+    opacity: 0.62;
+    margin-bottom: 0.65rem;
+}
+.cart-line-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 0.7rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid rgba(128, 128, 128, 0.16);
+    font-size: 0.8125rem;
+    opacity: 0.75;
+}
+.cart-line-total span {
+    font-size: 1.1rem;
+    font-weight: 700;
+    opacity: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Sign-in: the one page seen while logged out, so it carries the brand
+   rather than opening on a bare form. */
+.auth-brand {
+    text-align: center;
+    margin: 1.5rem 0 0.35rem;
+}
+.auth-brand__mark { font-size: 2.6rem; line-height: 1; }
+.auth-brand__title {
+    font-size: 1.7rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-top: 0.4rem;
+}
+.auth-brand__sub {
+    font-size: 0.875rem;
+    opacity: 0.6;
+    margin: 0.3rem 0 1.4rem;
+}
+
+.empty-state__icon { font-size: 2rem; line-height: 1; margin-bottom: 0.6rem; }
+.empty-state__title { font-weight: 650; font-size: 1.05rem; margin-bottom: 0.25rem; }
+.empty-state__body { font-size: 0.875rem; opacity: 0.62; }
 </style>
 """
+
+# The pill only ever renders a status that has a matching CSS class; anything
+# unrecognised falls back to the neutral 'submitted' look rather than showing
+# up unstyled.
+STATUS_PILL_CLASSES = {
+    'submitted': 'status-submitted',
+    'approved': 'status-approved',
+    'ordered': 'status-ordered',
+    'fulfilled': 'status-fulfilled',
+    'cancelled': 'status-cancelled',
+}
+
+
+def page_header(title: str, subtitle: str = '') -> None:
+    """Replaces st.title, so every page announces itself the same way."""
+    markup = f"<div class='page-head'>{html.escape(title)}</div>"
+    if subtitle:
+        markup += f"<div class='page-sub'>{html.escape(subtitle)}</div>"
+    st.markdown(markup, unsafe_allow_html=True)
+
+
+def status_pill(status: str) -> str:
+    """HTML for one status pill. Returns markup, so callers can inline it."""
+    key = str(status or '').strip().lower()
+    css = STATUS_PILL_CLASSES.get(key, 'status-submitted')
+    return f"<span class='status-pill {css}'>{html.escape(key or 'unknown')}</span>"
+
+
+def summary_row(figures: list[tuple[str, str]], accent_last: bool = True) -> None:
+    """
+    A row of labelled figures. Used instead of st.metric where the numbers are
+    a summary of what is below rather than something that moves - st.metric's
+    delta affordance implies a change that never comes.
+    """
+    cells = []
+    for index, (label, value) in enumerate(figures):
+        accent = ' summary-value--accent' if accent_last and index == len(figures) - 1 else ''
+        cells.append(
+            f"<div><div class='summary-label'>{html.escape(label)}</div>"
+            f"<div class='summary-value{accent}'>{html.escape(value)}</div></div>"
+        )
+    st.markdown(f"<div class='summary-row'>{''.join(cells)}</div>", unsafe_allow_html=True)
+
+
+def empty_state(icon: str, title: str, body: str = '') -> None:
+    st.markdown(
+        f"<div class='empty-state'><div class='empty-state__icon'>{icon}</div>"
+        f"<div class='empty-state__title'>{html.escape(title)}</div>"
+        + (f"<div class='empty-state__body'>{html.escape(body)}</div>" if body else '')
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def currency(value: float) -> str:
@@ -247,8 +512,23 @@ def confirm_delete_dialog(order_id: int, product_name: str):
 
 
 def render_auth_page():
-    st.title(APP_TITLE)
-    st.caption('Internal team ordering tool for discounted bowling products.')
+    # Constrained to the middle third: a full-width login form on a wide screen
+    # stretches its inputs across the whole monitor.
+    _, middle, _ = st.columns([1, 1.6, 1])
+    with middle:
+        _render_auth_forms()
+
+
+def _render_auth_forms():
+    st.markdown(
+        f"<div class='auth-brand'>"
+        f"<div class='auth-brand__mark'>🎳</div>"
+        f"<div class='auth-brand__title'>{html.escape(APP_TITLE)}</div>"
+        f"</div>"
+        f"<div class='auth-brand__sub' style='text-align:center'>"
+        f"Team ordering at sponsor prices.</div>",
+        unsafe_allow_html=True,
+    )
 
     login_tab, signup_tab, setup_tab = st.tabs(
         ['Login', 'Create account', 'First time here?']
@@ -461,13 +741,15 @@ def render_product_card(row: dict, row_key: str):
 
 
 def render_catalog_page():
-    st.title('Catalog')
+    page_header('Catalog', 'Storm equipment at team sponsor pricing.')
     df = load_catalog()
 
     if df.empty:
-        st.info('The catalog is empty.')
-        if is_admin():
-            st.caption('Load it from the Catalog Manager page.')
+        empty_state(
+            '🎳', 'The catalog is empty',
+            'Load it from the Catalog Manager page.' if is_admin()
+            else 'Ask an admin to run a catalog refresh.',
+        )
         return
 
     main_options, sub_options = get_filter_options(df)
@@ -533,10 +815,11 @@ def render_catalog_page():
 
 
 def render_cart_page():
-    st.title('Cart')
+    page_header('Cart', 'Adjust quantities and options before checking out.')
     ensure_cart()
     if not st.session_state['cart']:
-        st.info('Your cart is empty. Head to the Catalog to add something.')
+        empty_state('🛒', 'Your cart is empty',
+                    'Add something from the Catalog and it will show up here.')
         return
 
     total = 0.0
@@ -549,14 +832,18 @@ def render_cart_page():
             with left:
                 show_image(item.get('image_url'), alt=str(item.get('name', '')))
             with right:
-                st.write(f"**{item['name']}**")
-                st.write(f"SKU: {item['sku'] or 'N/A'}")
-
+                meta = [f"SKU {item['sku'] or 'N/A'}"]
                 scent = str(item.get('scent', '') or '').strip()
                 if item.get('product_type') == 'bowling_ball' and scent and scent.lower() != 'none':
-                    st.write(f"Scent: {scent}")
+                    meta.append(f"Scent: {scent}")
+                meta.append(f"{currency(item['unit_price'])} each")
 
-                st.write(f"Unit price: {currency(item['unit_price'])}")
+                st.markdown(
+                    f"<div class='cart-item-name'>{html.escape(str(item['name']))}</div>"
+                    f"<div class='cart-item-meta'>"
+                    f"{html.escape('  ·  '.join(meta))}</div>",
+                    unsafe_allow_html=True,
+                )
 
                 old_qty = int(item.get('quantity', 1))
                 qty = st.number_input(
@@ -595,7 +882,11 @@ def render_cart_page():
 
                 line_total = float(item['unit_price']) * int(item['quantity'])
                 total += line_total
-                st.write(f"**Line total:** {currency(line_total)}")
+                st.markdown(
+                    f"<div class='cart-line-total'>Line total "
+                    f"<span>{html.escape(currency(line_total))}</span></div>",
+                    unsafe_allow_html=True,
+                )
 
     if remove_index is not None:
         remove_cart_index(remove_index)
@@ -607,7 +898,11 @@ def render_cart_page():
     st.divider()
     left, right = st.columns([2, 1])
     with left:
-        st.metric('Cart total', currency(total))
+        units = sum(int(i.get('quantity', 1)) for i in st.session_state['cart'])
+        summary_row([
+            ('Items', str(units)),
+            ('Cart total', currency(total)),
+        ])
     with right:
         if st.button('Empty cart', use_container_width=True):
             st.session_state['cart'] = []
@@ -617,14 +912,14 @@ def render_cart_page():
 
 
 def render_checkout_page():
-    st.title('Checkout')
+    page_header('Checkout', 'One order, containing everything below.')
     ensure_cart()
     if not st.session_state['cart']:
-        st.info('Add items to your cart before checkout.')
+        empty_state('✅', 'Nothing to check out',
+                    'Add items to your cart first.')
         return
 
     total = sum(float(item['unit_price']) * int(item['quantity']) for item in st.session_state['cart'])
-    st.write('Review your order below.')
     st.table(pd.DataFrame([
         {
             'Product': item['name'],
@@ -636,7 +931,12 @@ def render_checkout_page():
         }
         for item in st.session_state['cart']
     ]))
-    st.metric('Estimated total', currency(total))
+    units = sum(int(i.get('quantity', 1)) for i in st.session_state['cart'])
+    summary_row([
+        ('Lines', str(len(st.session_state['cart']))),
+        ('Items', str(units)),
+        ('Estimated total', currency(total)),
+    ])
     checkout_note = st.text_area('Checkout note (optional)')
 
     if st.button('Confirm and place order', type='primary'):
@@ -649,18 +949,19 @@ def render_checkout_page():
 
 
 def render_profile_page():
-    st.title('Profile')
     user = get_current_user()
+    page_header(
+        f"{user['first_name']} {user['last_name']}",
+        str(user['email']),
+    )
     outstanding = get_orders_for_user(user['id'], ACTIVE_ORDER_STATUSES)
     fulfilled = get_orders_for_user(user['id'], COMPLETED_ORDER_STATUSES)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric('Total balance owed', currency(float(user['balance_owed'])))
-    c2.metric('Outstanding orders', len(outstanding))
-    c3.metric('Fulfilled orders', len(fulfilled))
-
-    st.write(f"**Name:** {user['first_name']} {user['last_name']}")
-    st.write(f"**Email:** {user['email']}")
+    summary_row([
+        ('Outstanding orders', str(len(outstanding))),
+        ('Fulfilled orders', str(len(fulfilled))),
+        ('Balance owed', currency(float(user['balance_owed']))),
+    ])
 
     saved_card = st.text_input('Saved card placeholder', value=user.get('saved_card', ''))
     if st.button('Update saved card placeholder'):
@@ -731,55 +1032,88 @@ def _flat_order_rows(orders):
 
 
 def _render_order_list(orders, show_customer: bool = False):
-    """One expander per order, holding that order's items."""
+    """
+    One card per order: a summary line that can be scanned down the page, with
+    the items themselves folded away behind it.
+
+    The summary is drawn as HTML rather than put in the expander's label
+    because a label is plain text - it cannot carry the status pill, which is
+    the thing worth seeing without opening anything.
+    """
     for order in orders:
         items = order.get('items', [])
         unit_count = order.get('item_count', 0)
-        header = (
-            f"Order #{order['id']}  ·  {order['timestamp']}  ·  "
-            f"{unit_count} item{'s' if unit_count != 1 else ''}  ·  "
-            f"{currency(float(order['total_price'] or 0))}  ·  {order['status']}"
-        )
-        if show_customer:
-            header = f"{order['customer_first_name']} {order['customer_last_name']}  —  " + header
+        plural = 's' if unit_count != 1 else ''
 
-        with st.expander(header):
+        with st.container(border=True):
+            customer = ''
+            if show_customer:
+                customer = (
+                    f"<span class='order-customer'>"
+                    f"{html.escape(str(order['customer_first_name']))} "
+                    f"{html.escape(str(order['customer_last_name']))}</span>"
+                )
+
+            st.markdown(
+                f"<div class='order-head'>"
+                f"<span class='order-id'>Order #{html.escape(str(order['id']))}</span>"
+                f"{status_pill(order['status'])}"
+                f"{customer}"
+                f"<span class='order-total'>"
+                f"{html.escape(currency(float(order['total_price'] or 0)))}</span>"
+                f"</div>"
+                f"<div class='order-meta'>{html.escape(str(order['timestamp']))}"
+                f" &middot; {unit_count} item{plural}</div>",
+                unsafe_allow_html=True,
+            )
+
             if order.get('note'):
                 st.caption(f"Note: {order['note']}")
-            st.dataframe(
-                _items_dataframe(items),
-                use_container_width=True,
-                hide_index=True,
-                column_config=ITEM_COLUMN_CONFIG,
-            )
+
+            with st.expander(f"{len(items)} line{'s' if len(items) != 1 else ''}"):
+                st.dataframe(
+                    _items_dataframe(items),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=ITEM_COLUMN_CONFIG,
+                )
 
 
 def render_outstanding_orders_page():
-    st.title('Outstanding Orders')
+    page_header('Outstanding Orders', 'Placed but not yet fulfilled.')
     user = get_current_user()
     orders = get_orders_for_user(user['id'], ACTIVE_ORDER_STATUSES)
     if not orders:
-        st.info('No active orders right now.')
+        empty_state('📦', 'Nothing outstanding',
+                    'Orders you place will show here until they are fulfilled.')
         return
 
     outstanding_total = sum(float(o['total_price'] or 0) for o in orders)
     items_total = sum(o.get('item_count', 0) for o in orders)
-    c1, c2, c3 = st.columns(3)
-    c1.metric('Active orders', len(orders))
-    c2.metric('Items', items_total)
-    c3.metric('Value', currency(outstanding_total))
+    summary_row([
+        ('Active orders', str(len(orders))),
+        ('Items', str(items_total)),
+        ('Value', currency(outstanding_total)),
+    ])
     _render_order_list(orders)
 
 
 def render_order_history_page():
-    st.title('Order History')
+    page_header('Order History', 'Every order you have placed, in any state.')
     user = get_current_user()
     orders = get_orders_for_user(user['id'])
     if not orders:
-        st.info('No order history yet.')
+        empty_state('🕘', 'No orders yet',
+                    'Once you check out, your orders appear here.')
         return
 
-    st.caption(f'{len(orders)} order(s), all statuses.')
+    spent = sum(float(o['total_price'] or 0) for o in orders
+                if str(o['status']).lower() != 'cancelled')
+    summary_row([
+        ('Orders', str(len(orders))),
+        ('Items', str(sum(o.get('item_count', 0) for o in orders))),
+        ('Total ordered', currency(spent)),
+    ])
     _render_order_list(orders)
 
     flat = _flat_order_rows(orders)
@@ -816,7 +1150,7 @@ def render_security_notices(users):
 
 
 def render_owner_dashboard():
-    st.title('Owner Dashboard')
+    page_header('Owner Dashboard', 'Everyone’s orders, and what still has to be placed.')
 
     filter_col1, filter_col2 = st.columns([2, 1])
     with filter_col1:
@@ -834,16 +1168,17 @@ def render_owner_dashboard():
 
     render_security_notices(data['users'])
 
-    c1, c2 = st.columns(2)
-    c1.metric('Pending bowling balls', data['pending_ball_count'])
-    c2.metric('Pending orders', data['active_order_count'])
+    summary_row([
+        ('Pending bowling balls', str(data['pending_ball_count'])),
+        ('Pending orders', str(data['active_order_count'])),
+    ])
 
     st.subheader('Pending bowling ball summary')
     if data['grouped_balls']:
         grouped_df = pd.DataFrame([{k: row[k] for k in row.keys()} for row in data['grouped_balls']])
         st.dataframe(grouped_df, use_container_width=True)
     else:
-        st.info('No bowling balls currently waiting to be ordered.')
+        st.caption('No bowling balls currently waiting to be ordered.')
 
     st.subheader('Order management')
     st.caption(f'{len(all_filtered_rows)} orders shown')
@@ -865,13 +1200,19 @@ def render_owner_dashboard():
             left, right = st.columns([3, 1])
             with left:
                 st.markdown(
-                    f"**Order #{order['id']}** · {order['customer_first_name']} "
-                    f"{order['customer_last_name']} ({order['customer_email']})"
-                )
-                st.caption(
-                    f"{order['timestamp']} · {unit_count} item"
-                    f"{'s' if unit_count != 1 else ''} · "
-                    f"{currency(float(order['total_price'] or 0))} · {order['status']}"
+                    f"<div class='order-head'>"
+                    f"<span class='order-id'>Order #{html.escape(str(order['id']))}</span>"
+                    f"{status_pill(order['status'])}"
+                    f"<span class='order-customer'>"
+                    f"{html.escape(str(order['customer_first_name']))} "
+                    f"{html.escape(str(order['customer_last_name']))}"
+                    f" &middot; {html.escape(str(order['customer_email']))}</span>"
+                    f"<span class='order-total'>"
+                    f"{html.escape(currency(float(order['total_price'] or 0)))}</span>"
+                    f"</div>"
+                    f"<div class='order-meta'>{html.escape(str(order['timestamp']))}"
+                    f" &middot; {unit_count} item{'s' if unit_count != 1 else ''}</div>",
+                    unsafe_allow_html=True,
                 )
                 if order.get('note'):
                     st.caption(f"Note: {order['note']}")
@@ -965,7 +1306,8 @@ def render_main_app():
         render_catalog_manager(str(user.get('email', '')))
 
 
-st.markdown(CATALOG_CSS, unsafe_allow_html=True)
+st.markdown(theme_variables(), unsafe_allow_html=True)
+st.markdown(APP_CSS, unsafe_allow_html=True)
 
 if not is_logged_in():
     render_auth_page()
