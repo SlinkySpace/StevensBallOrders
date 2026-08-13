@@ -810,6 +810,10 @@ def _set_app_state(key: str, value: str) -> None:
         conn.execute(query, (key, value))
 
 
+# Products whose URL is not a Storm one were added by hand in the Catalog
+# Manager and are never touched by a scrape.
+STORM_URL_MARKER = 'stormbowling.com'
+
 PRODUCT_COLUMNS = (
     'product_url', 'sku', 'name', 'price', 'in_stock', 'is_visible',
     'main_category', 'sub_category', 'product_type', 'scent', 'image_url',
@@ -963,7 +967,9 @@ def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '
       'add_new' - only insert products that aren't already there
       'refresh' - insert new ones and overwrite scraper-owned fields on the rest,
                   preserving is_visible so hidden products stay hidden
-      'replace' - wipe the table and reload from scratch
+      'replace' - clear the Storm catalog and reload it from the file, so
+                  anything Storm has stopped listing disappears. Hand-added
+                  products and hidden flags survive.
     """
     if mode not in {'add_new', 'refresh', 'replace'}:
         raise ValueError(f'Unknown import mode: {mode}')
@@ -1024,14 +1030,45 @@ def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '
     ]
 
     deleted = 0
+    hidden: list[str] = []
     with get_conn() as conn:
         if mode == 'replace':
-            before = conn.execute("SELECT COUNT(*) AS n FROM products").fetchone()
-            deleted = int(before['n'] or 0)
-            conn.execute("DELETE FROM products")
+            # Clear the Storm catalog so it mirrors the file exactly, including
+            # dropping anything Storm has discontinued.
+            #
+            # Products added by hand are kept. They are identified by their URL
+            # not being a stormbowling.com one, they never appear in a scrape,
+            # and deleting the club's own shirts and raffle items on every sync
+            # is not what replacing Storm's catalog means.
+            storm = conn.execute(
+                f"SELECT product_url, is_visible FROM products "
+                f"WHERE product_url LIKE {_placeholder()}",
+                (f'%{STORM_URL_MARKER}%',),
+            ).fetchall()
+            deleted = len(storm)
+
+            # Hiding a product is a deliberate decision by whoever runs the
+            # Catalog Manager, not something the scrape knows about. Carry it
+            # across the wipe for anything Storm still lists, or every sync
+            # would quietly put hidden products back on the shelf.
+            hidden = [row['product_url'] for row in storm if not row['is_visible']]
+
+            conn.execute(
+                f"DELETE FROM products WHERE product_url LIKE {_placeholder()}",
+                (f'%{STORM_URL_MARKER}%',),
+            )
 
         cur = conn.cursor()
         cur.executemany(query, params)
+
+        if mode == 'replace' and hidden:
+            still_here = [url for url in hidden if url in incoming]
+            if still_here:
+                cur.executemany(
+                    f"UPDATE products SET is_visible = {_placeholder()} "
+                    f"WHERE product_url = {_placeholder()}",
+                    [(False, url) for url in still_here],
+                )
 
     return {
         'inserted': inserted if mode != 'replace' else len(rows),
@@ -1140,9 +1177,6 @@ def get_catalog_freshness() -> dict:
         'total_products': int(row['total'] or 0) if row else 0,
         'last_import': last_import,
     }
-
-
-STORM_URL_MARKER = 'stormbowling.com'
 
 
 def retire_missing_products(seen_urls: Iterable[str], updated_by: str = '') -> list[dict]:

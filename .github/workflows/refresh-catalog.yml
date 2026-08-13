@@ -37,8 +37,8 @@ on:
       mode:
         description: 'Merge mode'
         type: choice
-        options: [refresh, add_new]
-        default: refresh
+        options: [replace, refresh, add_new]
+        default: replace
       max_price_drift:
         description: 'Abort if more than this fraction of prices changed (0.25 = 25%)'
         type: string
@@ -111,7 +111,7 @@ jobs:
         run: |
           python sync_catalog.py \
             --dry-run \
-            --mode "${{ inputs.mode || 'refresh' }}" \
+            --mode "${{ inputs.mode || 'replace' }}" \
             --max-price-drift "${{ inputs.max_price_drift || '0.25' }}"
 
       - name: Fetch and compress images for new products
@@ -133,7 +133,7 @@ jobs:
           SYNC_ACTOR: 'scheduled refresh'
         run: |
           python sync_catalog.py \
-            --mode "${{ inputs.mode || 'refresh' }}" \
+            --mode "${{ inputs.mode || 'replace' }}" \
             --max-price-drift "${{ inputs.max_price_drift || '0.25' }}"
 
       - name: Commit the refreshed catalog

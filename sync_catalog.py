@@ -43,9 +43,11 @@ def parse_args(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--csv', default='storm_products_tagged.csv',
                         help='scraper CSV to load (default: storm_products_tagged.csv)')
-    parser.add_argument('--mode', default='refresh',
+    parser.add_argument('--mode', default='replace',
                         choices=['add_new', 'refresh', 'replace'],
-                        help='how to merge (default: refresh, which keeps hidden products hidden)')
+                        help='how to merge. replace (default) makes the catalog mirror '
+                             'the file exactly, dropping anything Storm has stopped '
+                             'listing; refresh updates in place and keeps manual edits')
     parser.add_argument('--dry-run', action='store_true',
                         help='run every check and report, but write nothing')
     parser.add_argument('--min-rows', type=int, default=300,
@@ -126,7 +128,9 @@ def evaluate_guards(rows: list[dict], existing: list[dict], args) -> tuple[list[
     brand_new = len(incoming_urls - known_urls)
     new_fraction = (brand_new / total) if total else 0.0
 
-    if existing and new_fraction > args.max_new_products:
+    # Meaningless in replace mode, where the Storm rows are cleared first and
+    # every incoming product is new by definition.
+    if existing and args.mode != 'replace' and new_fraction > args.max_new_products:
         problems.append(
             f'{brand_new} of {total} rows ({new_fraction:.0%}) look like new products, '
             f'over the {args.max_new_products:.0%} limit, while the catalog already '
@@ -232,23 +236,35 @@ def main(argv=None) -> int:
             return EXIT_GUARD_TRIPPED
         print('\n--force given, applying anyway.')
 
-    if not args.keep_missing and args.mode != 'replace':
+    # Always show what disappears, whichever mode is in play. In replace mode
+    # these rows are deleted outright, so seeing them before approving matters
+    # more here than it did when they were merely marked out of stock.
+    if args.mode != 'add_new':
         incoming = {row['product_url'] for row in rows}
-        would_retire = [
-            p for p in existing
-            if p['in_stock']
-            and 'stormbowling.com' in str(p['product_url']).lower()
-            and str(p['product_url']) not in incoming
-        ]
-        if would_retire:
-            share = len(would_retire) / len(existing) if existing else 0
-            print(f'\n  {len(would_retire)} product(s) ({share:.0%}) are in the catalog but '
-                  'not in this file, so Storm has stopped listing them. They will be '
-                  'marked out of stock:')
-            for product in would_retire[:8]:
+        storm_rows = [p for p in existing
+                      if 'stormbowling.com' in str(p['product_url']).lower()]
+        going = [p for p in storm_rows if str(p['product_url']) not in incoming]
+
+        if args.mode == 'refresh' and not args.keep_missing:
+            going = [p for p in going if p['in_stock']]
+            verb, consequence = 'marked out of stock', 'kept, with price and category intact'
+        elif args.mode == 'replace':
+            verb, consequence = 'deleted', 'removed from the catalog entirely'
+        else:
+            going = []
+            verb = consequence = ''
+
+        if going:
+            share = len(going) / len(storm_rows) if storm_rows else 0
+            print(f'\n  {len(going)} Storm product(s) ({share:.0%}) are in the catalog but '
+                  f'not in this file. They will be {verb} - {consequence}:')
+            for product in going[:8]:
                 print(f'    {str(product["name"])[:44]:<44} {str(product["sku"] or "-")[:12]}')
-            if len(would_retire) > 8:
-                print(f'    ... and {len(would_retire) - 8} more')
+            if len(going) > 8:
+                print(f'    ... and {len(going) - 8} more')
+            hand_added = len(existing) - len(storm_rows)
+            if hand_added:
+                print(f'  {hand_added} hand-added product(s) are untouched.')
 
     if args.dry_run:
         print('\nDry run, nothing written.')
