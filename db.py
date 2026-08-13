@@ -1142,6 +1142,50 @@ def get_catalog_freshness() -> dict:
     }
 
 
+STORM_URL_MARKER = 'stormbowling.com'
+
+
+def retire_missing_products(seen_urls: Iterable[str], updated_by: str = '') -> list[dict]:
+    """
+    Mark Storm products that were not in the latest scrape as out of stock.
+
+    Storm drops products from its catalog and simply stops listing them. Only
+    updating what the scrape contains leaves those rows behind, in stock and
+    orderable forever.
+
+    Out of stock rather than deleted, so order history keeps pointing at a real
+    product and an item that returns next season comes back with its price and
+    category intact. Products added by hand are left alone - they never appear
+    in a Storm scrape, and retiring them would delete the club's own items on
+    every sync.
+    """
+    seen = {str(u).strip() for u in seen_urls if str(u).strip()}
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"SELECT product_url, name, sku, price FROM products "
+            f"WHERE in_stock = {'TRUE' if USE_POSTGRES else '1'}"
+        ).fetchall()
+
+    missing = [
+        dict(row) for row in rows
+        if STORM_URL_MARKER in str(row['product_url']).lower()
+        and str(row['product_url']) not in seen
+    ]
+    if not missing:
+        return []
+
+    with get_conn() as conn:
+        placeholders = _placeholders(len(missing))
+        conn.execute(
+            f"UPDATE products SET in_stock = {_placeholder()}, updated_at = {_placeholder()}, "
+            f"updated_by = {_placeholder()} WHERE product_url IN ({placeholders})",
+            [False, now_iso(), updated_by] + [m['product_url'] for m in missing],
+        )
+
+    return missing
+
+
 def get_owner_dashboard_data(statuses: Optional[Iterable[str]] = None) -> dict:
     """
     Everything the owner dashboard renders, on a single connection.

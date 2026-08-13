@@ -60,6 +60,13 @@ def parse_args(argv=None):
                         help='fail if more than this fraction of the file looks new '
                              'while the catalog is already populated, which means '
                              'matching broke (default: 0.50)')
+    parser.add_argument('--keep-missing', action='store_true',
+                        help='leave products absent from the file in stock. By '
+                             'default they are marked out of stock, since Storm '
+                             'drops discontinued items by simply not listing them.')
+    parser.add_argument('--max-retire', type=float, default=0.25,
+                        help='refuse to retire more than this fraction of the '
+                             'catalog in one run (default: 0.25)')
     parser.add_argument('--updated-by', default=os.environ.get('SYNC_ACTOR', 'scheduled sync'),
                         help='recorded against every row this touches')
     parser.add_argument('--force', action='store_true',
@@ -185,6 +192,7 @@ def main(argv=None) -> int:
         get_products,
         init_db,
         record_catalog_import,
+        retire_missing_products,
         upsert_products,
     )
 
@@ -224,6 +232,24 @@ def main(argv=None) -> int:
             return EXIT_GUARD_TRIPPED
         print('\n--force given, applying anyway.')
 
+    if not args.keep_missing and args.mode != 'replace':
+        incoming = {row['product_url'] for row in rows}
+        would_retire = [
+            p for p in existing
+            if p['in_stock']
+            and 'stormbowling.com' in str(p['product_url']).lower()
+            and str(p['product_url']) not in incoming
+        ]
+        if would_retire:
+            share = len(would_retire) / len(existing) if existing else 0
+            print(f'\n  {len(would_retire)} product(s) ({share:.0%}) are in the catalog but '
+                  'not in this file, so Storm has stopped listing them. They will be '
+                  'marked out of stock:')
+            for product in would_retire[:8]:
+                print(f'    {str(product["name"])[:44]:<44} {str(product["sku"] or "-")[:12]}')
+            if len(would_retire) > 8:
+                print(f'    ... and {len(would_retire) - 8} more')
+
     if args.dry_run:
         print('\nDry run, nothing written.')
         return EXIT_OK
@@ -233,6 +259,35 @@ def main(argv=None) -> int:
 
     print(f'\nApplied: {result["inserted"]} added, {result["updated"]} updated, '
           f'{result["skipped"]} left alone, {result["deleted"]} removed.')
+
+    # Storm delists a discontinued product rather than marking it unavailable,
+    # so anything it no longer lists has to be retired here or it stays
+    # orderable forever.
+    #
+    # Only safe because the guards above have already established this scrape is
+    # complete: on a truncated run every product it missed would look
+    # discontinued. The second limit catches the case where the guards pass but
+    # the file still covers far less of the catalog than it should.
+    if not args.keep_missing and args.mode != 'replace':
+        retired = retire_missing_products(
+            [row['product_url'] for row in rows], updated_by=args.updated_by
+        )
+        share = len(retired) / len(existing) if existing else 0
+
+        if share > args.max_retire:
+            print(f'\nWARNING: {len(retired)} of {len(existing)} products ({share:.0%}) '
+                  f'were missing from this file, over the {args.max_retire:.0%} limit. '
+                  'They have been marked out of stock, but that many disappearing at '
+                  'once usually means an incomplete scrape rather than a cull - worth '
+                  'checking the catalog before the team next orders.')
+        elif retired:
+            print(f'\nRetired {len(retired)} product(s) Storm no longer lists '
+                  '(marked out of stock, not deleted):')
+            for product in retired[:10]:
+                print(f'    {str(product["name"])[:44]:<44} {str(product["sku"] or "-")[:12]}')
+            if len(retired) > 10:
+                print(f'    ... and {len(retired) - 10} more')
+
     return EXIT_OK
 
 
