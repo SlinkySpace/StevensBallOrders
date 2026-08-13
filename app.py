@@ -764,6 +764,19 @@ def render_catalog_page():
     with c3:
         selected_sub = st.selectbox('Sub category', sub_options, label_visibility='collapsed')
 
+    # Narrowing the catalog starts again at page one. Without this the page
+    # number carries over, so filtering to a category from page 5 lands you on
+    # page 5 of it - or on its last page, which is what the clamp below does
+    # and looks even more like the filter half-worked.
+    #
+    # Compared rather than hung off an on_change callback: that would need a
+    # key on each widget, and a stored key whose value has since vanished from
+    # the options - a category dropped by a catalog refresh - is its own bug.
+    filter_state = (search, selected_main, selected_sub)
+    if st.session_state.get('catalog_filters') != filter_state:
+        st.session_state['catalog_filters'] = filter_state
+        st.session_state['catalog_page_number'] = 1
+
     filtered = filter_catalog(df, search, selected_main, selected_sub)
 
     total_items = len(filtered)
