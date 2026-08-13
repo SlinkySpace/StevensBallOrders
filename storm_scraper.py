@@ -4,7 +4,7 @@ import re
 import sys
 import time
 from collections import Counter
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 

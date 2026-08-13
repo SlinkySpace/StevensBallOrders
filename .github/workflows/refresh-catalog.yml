@@ -73,6 +73,16 @@ jobs:
           pip install playwright Pillow
           playwright install --with-deps chromium
 
+      # Costs a couple of seconds and catches what py_compile cannot. A missing
+      # `urlparse` import got through and only surfaced after the login and
+      # browser install had already run, on a step that can take 40 minutes.
+      - name: Check for undefined names
+        run: |
+          python -m pip install --quiet pyflakes
+          python -m pyflakes storm_scraper.py label_cleaning.py sync_catalog.py \
+                             catalog.py db.py app.py catalog_admin.py auth.py \
+                             config.py email_utils.py dedupe_products.py wipe_orders.py
+
       - name: Restore the Storm login session
         env:
           STORM_AUTH_STATE: ${{ secrets.STORM_AUTH_STATE }}
