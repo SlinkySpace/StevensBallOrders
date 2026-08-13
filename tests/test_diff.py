@@ -3,7 +3,7 @@ APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(APP); sys.path.insert(0, APP)
 
 import pandas as pd
-from catalog_admin import _diff_rows, _editor_frame, EDITOR_COLUMNS
+from catalog_admin import _diff_rows, _editor_frame
 
 base = pd.DataFrame([
     {'product_url': 'u1', 'sku': 'A1', 'name': 'Ball One', 'price': 120.0,

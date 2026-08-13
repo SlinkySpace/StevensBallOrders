@@ -1,5 +1,5 @@
 """Auth tests, including migrating a database that predates the password column."""
-import os, sys, sqlite3, tempfile, shutil
+import os, sys, sqlite3, tempfile
 from pathlib import Path
 
 APP = str(Path(__file__).resolve().parents[1])

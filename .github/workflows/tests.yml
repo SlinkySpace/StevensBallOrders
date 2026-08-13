@@ -1,0 +1,63 @@
+name: Tests
+
+# Runs on every push and pull request, so a break is found at the commit that
+# caused it rather than 40 minutes into the next catalog refresh.
+#
+# The refresh workflow runs this same suite again before it scrapes. That is
+# deliberate duplication: this job proves main is healthy, and the one there
+# proves the code about to write to the live database is healthy, which is not
+# the same thing when a refresh runs days after the last push.
+
+on:
+  push:
+    branches: [main]
+    # A catalog refresh commits ~100 image files alongside the CSV. The CSV is
+    # not ignored - two tests read it - so those commits still get tested; this
+    # only avoids a run when images are all that changed.
+    paths-ignore:
+      - 'static/catalog_images/**'
+  pull_request:
+  workflow_dispatch:
+
+# A second push supersedes the first; no point finishing a run for a commit
+# that has already been replaced.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Not in requirements.txt on purpose: only optimize_images.py needs
+          # Pillow, and requirements.txt is what Streamlit Community Cloud
+          # installs to run the app, which does not.
+          pip install pyflakes Pillow
+
+      # Catches what py_compile cannot. A missing `urlparse` import once got
+      # through and only surfaced after a login and a browser install had
+      # already run.
+      - name: Check for undefined names
+        run: python -m pyflakes *.py tests/*.py tests/manual/*.py
+
+      # Every test builds its state in a throwaway SQLite file with
+      # DATABASE_URL blanked, so no secrets are needed and nothing here can
+      # reach the hosted database.
+      - name: Run the test suite
+        run: python tests/run_all.py

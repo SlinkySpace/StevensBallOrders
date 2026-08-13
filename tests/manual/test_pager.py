@@ -54,6 +54,6 @@ for name, n in sorted(per_cat.items()):
 
 print(f"\n  listing pages visited : {len(sources)}")
 print(f"  unique products found : {len(seen)}")
-print(f"  previous broken scrape: 268")
-print(f"  guard minimum         : 300")
+print("  previous broken scrape: 268")
+print("  guard minimum         : 300")
 print("\n  " + ("CLEARS the guard" if len(seen) >= 300 else "STILL BELOW the guard"))
