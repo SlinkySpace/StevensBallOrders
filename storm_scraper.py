@@ -66,7 +66,20 @@ NAME_XPATH = "/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div
 SKU_H4_XPATH = "/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div[2]/div[1]/div/div/div/div[1]/div/div[1]/div/h4"
 SKU_LABEL_XPATH = "/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div[2]/div[1]/div/div/div/div[1]/div/div[1]/div/h4/span"
 
-PRICE_XPATH = "/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div[2]/div[1]/div/div/div/div[1]/div/div[2]/div/div/div/span"
+# Two absolute paths, differing by one wrapper element near the top:
+#
+#   .../body/div[2]/div[1]/div/div/...     the older markup
+#   .../body/div[2]/div/div/div/...        the current markup
+#
+# Being one element out is exactly why the price silently came back empty and 57
+# products were filed OUT_OF_STOCK, which hid them from the whole team. Both are
+# tried, then a structural search that does not care about nesting at all - see
+# EXTRACT_DETAIL_JS. Absolute paths are the fallback here, not the plan.
+PRICE_XPATHS = [
+    "/html/body/div[2]/div/div/div/div[2]/div[2]/form/div[2]/div[2]/div[1]/div/div/div/div[1]/div/div[2]/div/div/div/span",
+    "/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div[2]/div[1]/div/div/div/div[1]/div/div[2]/div/div/div/span",
+]
+PRICE_XPATH = PRICE_XPATHS[0]
 
 # Scent / fragrance
 SCENT_P_XPATH = "/html/body/div[2]/div[1]/div/div/div/div[2]/div[2]/form/div[2]/div[2]/div[1]/div/div/div/div[2]/div/div[2]/div/p[15]"
@@ -605,7 +618,9 @@ EXTRACT_DETAIL_JS = r"""
   );
   const amount = (el) => {
     if (!el || inCart(el)) return '';
-    const m = (el.textContent || '').trim().match(/\$\s?([\d,]+\.\d{2})/);
+    // Whitespace is stripped rather than trimmed: a price split across tags can
+    // read as "$ 85 . 00" once textContent joins the pieces back together.
+    const m = (el.textContent || '').replace(/\s+/g, '').match(/\$([\d,]+\.\d{2})/);
     return m && parseFloat(m[1].replace(/,/g, '')) > 0 ? '$' + m[1] : '';
   };
 
@@ -615,12 +630,39 @@ EXTRACT_DETAIL_JS = r"""
     if (price) break;
   }
 
-  // Last resort, kept narrow so the "FREE SHIPPING OVER $75" banner cannot win.
+  // The price sits inside the form you add to the cart with. That form is a far
+  // steadier landmark than counting divs from <body>, which is how the absolute
+  // path ended up one element out and silently returning nothing.
+  //
+  // Deliberately not restricted to childless elements. Storm splits the amount
+  // across nested tags, so a leaf-only search sees "$" in one node and the
+  // digits in another and matches neither - which is exactly why probing this
+  // page for a price kept coming back empty. textContent joins them back up, so
+  // the trick is to take the *most specific* element that still reads as money.
+  if (!price) {
+    const forms = [...document.querySelectorAll('form')].filter(f =>
+      f.querySelector('[name*=qty i], [name*=quantity i], [class*=add-to-cart i], [id*=addtocart i]')
+      || /add to cart/i.test(f.textContent || '')
+    );
+    const scopes = forms.length ? forms : [...document.querySelectorAll('form')];
+
+    let best = null, bestSize = Infinity;
+    for (const scope of scopes) {
+      if (inCart(scope)) continue;
+      for (const el of scope.querySelectorAll('span, strong, b, div, p')) {
+        if (!amount(el)) continue;
+        const size = el.querySelectorAll('*').length;   // fewer descendants = tighter
+        if (size < bestSize) { best = el; bestSize = size; }
+      }
+    }
+    if (best) price = amount(best);
+  }
+
+  // Last resort. Narrow on purpose so "FREE U.S. SHIPPING OVER $75" cannot win.
   if (!price) {
     for (const scope of document.querySelectorAll('.product-shop, .module-product-details')) {
       for (const el of scope.querySelectorAll('span, strong, b')) {
-        if (el.children.length) continue;
-        const text = (el.textContent || '').trim();
+        const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
         if (!/^\$\s?[\d,]+\.\d{2}$/.test(text)) continue;
         price = amount(el);
         if (price) break;
@@ -740,13 +782,20 @@ def scrape_product_detail(page, product_url: str):
         print(f"[WARN] Still throttled, skipping {product_url}")
         return detail
 
-    # The amount is written into .product_pricetag after the page loads, so
-    # reading straight after domcontentloaded caught an empty "$". Wait for a
-    # digit to appear rather than guessing at a sleep.
+    # Wait for an amount to appear anywhere in the add-to-cart form, rather than
+    # reading a fixed moment after domcontentloaded. Watching the whole form
+    # rather than one class means this still works if the price moves again.
     try:
         page.wait_for_function(
-            """() => [...document.querySelectorAll('.product_pricetag')]
-                     .some(el => /\\$\\s?[\\d,]+\\.\\d{2}/.test(el.textContent || ''))""",
+            """() => {
+                 const inCart = (el) => !!el.closest(
+                   '.preview-cart, .module-basket-summary, .dropdown-toggle, .mini-cart, .cart-totals');
+                 for (const form of document.querySelectorAll('form')) {
+                   if (inCart(form)) continue;
+                   if (/\\$\\s?[\\d,]+\\.\\d{2}/.test(form.textContent || '')) return true;
+                 }
+                 return false;
+               }""",
             timeout=PRICE_WAIT_MS,
         )
     except Exception:
@@ -764,11 +813,12 @@ def scrape_product_detail(page, product_url: str):
     sku = parse_sku(declared.get("sku") or "")
     detail["image"] = str(declared.get("image") or "").strip()
 
-    # Price takes the long-standing path first. It priced 334 products correctly
-    # on the last run, and money is the one field where a plausible wrong answer
-    # is worse than none - the text search below is a fallback for the pages it
-    # misses, not a replacement.
-    price = text_or_empty(page.locator(f"xpath={PRICE_XPATH}"))
+    # Both known absolute paths, then the structural search from the extractor.
+    price = ""
+    for xpath in PRICE_XPATHS:
+        price = text_or_empty(page.locator(f"xpath={xpath}"))
+        if price:
+            break
     if not price:
         price = clean_text(declared.get("price") or "")
 
