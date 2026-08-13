@@ -605,6 +605,12 @@ def _render_auth_forms():
                     st.error(error)
 
 
+def go_to_page(page: str) -> None:
+    """Move to another page from a button, and rerun so it renders."""
+    st.session_state['goto_page'] = page
+    st.rerun()
+
+
 def render_sidebar():
     user = get_current_user()
     cart = st.session_state.get('cart', [])
@@ -632,6 +638,14 @@ def render_sidebar():
     if is_admin():
         pages['Owner Dashboard'] = '📊  Owner Dashboard'
         pages['Catalog Manager'] = '🗂️  Catalog Manager'
+
+    # A button elsewhere in the app can ask for a page by calling go_to_page().
+    # Streamlit refuses to let session_state['nav_page'] be written once the
+    # radio below exists, and that radio is built before any page renders - so
+    # the request is parked under a different key and spent here instead.
+    requested = st.session_state.pop('goto_page', None)
+    if requested in pages:
+        st.session_state['nav_page'] = requested
 
     # Keyed, so the selected page survives the st.rerun() that follows actions
     # like emptying the cart or applying a status. Without it the nav snapped
@@ -909,19 +923,25 @@ def render_cart_page():
         persist_cart()
 
     st.divider()
-    left, right = st.columns([2, 1])
-    with left:
+    summary, empty, checkout = st.columns([2, 1, 1])
+    with summary:
         units = sum(int(i.get('quantity', 1)) for i in st.session_state['cart'])
         summary_row([
             ('Items', str(units)),
             ('Cart total', currency(total)),
         ])
-    with right:
+    with empty:
         if st.button('Empty cart', use_container_width=True):
             st.session_state['cart'] = []
             persist_cart()
             st.toast('Cart emptied.')
             st.rerun()
+    with checkout:
+        # The obvious next step, rather than making people find Checkout in the
+        # sidebar. Quantities and options are written to the cart as they are
+        # edited above, so there is nothing to save first.
+        if st.button('Checkout →', type='primary', use_container_width=True):
+            go_to_page('Checkout')
 
 
 def render_checkout_page():

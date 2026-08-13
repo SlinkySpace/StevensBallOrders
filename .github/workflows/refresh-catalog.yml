@@ -9,8 +9,8 @@ name: Refresh catalog
 #
 # STORM_AUTH_STATE expires. When it does the scrape still finishes, but as a
 # logged-out visitor seeing retail prices instead of sponsor prices, so
-# sync_catalog.py refuses to write and this workflow opens an issue. Refreshing
-# the secret is a manual job - see the README.
+# sync_catalog.py refuses to write and the run fails. Refreshing the secret is a
+# manual job - see the README.
 
 # Run on demand, not on a schedule.
 #
@@ -23,8 +23,9 @@ name: Refresh catalog
 # starts this workflow immediately, while the login is fresh. The Catalog
 # Manager warns when the catalog is getting old, which is the nudge to do it.
 #
-# To go back to a schedule, uncomment below - the failure path already opens an
-# issue explaining how to refresh the secret.
+# To go back to a schedule, uncomment below. Note that a scheduled run that
+# fails is only visible in the Actions tab - there is no notification step, so
+# add one if nobody is watching.
 #   schedule:
 #     - cron: '0 9 * * 1'
 on:
@@ -50,8 +51,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  # write, because a successful run commits the refreshed CSV and images.
   contents: write
-  issues: write
 
 jobs:
   refresh:
@@ -180,39 +181,3 @@ jobs:
             storm_products_tagged.csv
           retention-days: 14
           if-no-files-found: warn
-
-      - name: Open an issue if this failed
-        if: failure() && github.event_name == 'schedule'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          TITLE='Scheduled catalog refresh failed'
-          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
-
-          if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --body "Failed again: $RUN_URL"
-            exit 0
-          fi
-
-          gh issue create --title "$TITLE" --body "$(cat <<EOF
-          The weekly catalog refresh failed: $RUN_URL
-
-          The usual cause is an expired \`STORM_AUTH_STATE\`. When the saved session
-          stops working the scraper sees stormbowling.com logged out, which means
-          retail prices rather than sponsor prices, and \`sync_catalog.py\` refuses
-          to write them to the database.
-
-          Nothing was written, so the catalog in the app is unchanged and still
-          usable. To fix:
-
-          1. Locally, set \`SCRAPER_SETUP_LOGIN=true\` and run \`python storm_scraper.py\`.
-          2. Log in to stormbowling.com in the browser window that opens, then press Enter.
-          3. Copy the contents of the regenerated \`storm_auth_state.json\`.
-          4. Paste it into the \`STORM_AUTH_STATE\` repository secret.
-          5. Re-run this workflow from the Actions tab.
-
-          Check the "scrape-output" artifact on the failed run to see what was
-          actually scraped.
-          EOF
-          )"
