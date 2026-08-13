@@ -69,9 +69,26 @@ def update_catalog_csv(mapping: dict[str, str]) -> int:
         print(f'\nSkipping CSV update, no image_url column in {CATALOG_CSV}.')
         return 0
 
-    original = df['image_url'].astype(str)
-    df['image_url'] = original.map(lambda v: mapping.get(v.strip(), v))
-    changed = int((df['image_url'].astype(str) != original).sum())
+    # A product can have no image: download_images.py leaves the cell empty when
+    # a fetch fails, which it did for 3 of 427 products on one run. pandas hands
+    # that back as NaN, and with its pyarrow backend .astype(str) leaves it as
+    # NA rather than the string "nan" - so calling .strip() on it raised
+    # AttributeError and killed the step after 423 images had already been
+    # converted, taking the whole refresh with it.
+    original = df['image_url']
+
+    def repoint(value):
+        if not isinstance(value, str):
+            return value
+        return mapping.get(value.strip(), value)
+
+    updated = original.map(repoint)
+
+    def comparable(series):
+        return series.astype('string').fillna('')
+
+    changed = int((comparable(updated) != comparable(original)).sum())
+    df['image_url'] = updated
 
     if changed:
         df.to_csv(CATALOG_CSV, index=False)
