@@ -46,18 +46,24 @@ LISTING_URL_TEMPLATE = "https://www.stormbowling.com/products/24/1/{page}/"
 # we asked for rather than being guessed from a product slug afterwards - which
 # is what left 79 products filed under Unknown.
 #
-# per_page asks for the whole category in one response, so a category is one
-# request rather than several, which also means less throttling.
 CATEGORY_ROOTS = [
     "https://www.stormbowling.com/products/equipment/",
     "https://www.stormbowling.com/products/bowling-essentials/",
     "https://www.stormbowling.com/products/merchandise/",
 ]
-# Storm ignores per_page above its own default: asking for 200 still returned 24,
-# so seven categories came back truncated and the scrape found 268 products
-# instead of 424. Each category is paged through instead, until a page adds
-# nothing new.
-CATEGORY_PAGE_SIZE = 24
+# Storm pages a category through the URL *path*, not the query string:
+#
+#   /products/equipment/bowling-balls/24/1/2/     <- per_page / sort_by / page
+#
+# so ?per_page=200 and ?page=2 are both ignored and quietly serve page 1 again.
+# That truncated all seven larger categories - Bowling Balls included - at 24
+# items, and a scrape that should find ~424 products found 268.
+#
+# Rather than build those paths here, follow the pager the page itself renders.
+# Guessing at Storm's URL scheme is what broke this, and a guess that stops
+# working fails silently: every category still returns its first page, which
+# looks like a successful scrape of a smaller catalog.
+PAGER_LINK_SELECTOR = ".pagination a[href]"
 CATEGORY_MAX_PAGES = 12
 USE_CATEGORY_WALK = _env_flag("SCRAPER_CATEGORY_WALK", True)
 
@@ -442,6 +448,55 @@ def discover_category_pages(page) -> list[dict]:
     categories = sorted(found.values(), key=lambda c: (c["main_category"], c["sub_category"]))
     print(f"[INFO] Found {len(categories)} sub-categories")
     return categories
+
+
+def read_pager_urls(page, category_url: str) -> list[str]:
+    """
+    Return the other pages of this category, read from its own pager.
+
+    The pager on page 1 links to every other page, so one read is usually
+    enough; later pages just re-confirm what is already queued.
+
+    Only links below the category path are accepted. The pager sits in the same
+    region as brand and ball-motion filters, and following one of those would
+    wander into a filtered subset while reporting it as the category.
+    """
+    try:
+        hrefs = page.eval_on_selector_all(
+            PAGER_LINK_SELECTOR, "els => els.map(e => e.href)"
+        ) or []
+    except Exception as exc:
+        print(f"[WARN] Could not read the pager on {category_url}: {exc}")
+        return []
+
+    base = urlparse(category_url)
+    found: list[str] = []
+
+    for href in hrefs:
+        try:
+            parsed = urlparse(urljoin(category_url, href))
+        except ValueError:
+            continue
+        if parsed.netloc != base.netloc:
+            continue
+        # A page URL is the category path plus the /per_page/sort/page/ tail.
+        if not parsed.path.startswith(base.path) or parsed.path == base.path:
+            continue
+
+        # Every page links back to page 1, which is the category URL we started
+        # from - but spelled ".../24/1/1/", so it does not dedupe against it.
+        # Left in, each category re-scrapes its first page under the label of
+        # its last, and for one category that spelling renders empty and costs
+        # three retries.
+        tail = [p for p in parsed.path[len(base.path):].split("/") if p]
+        if tail and tail[-1] == "1":
+            continue
+
+        url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        if url not in found:
+            found.append(url)
+
+    return found
 
 
 def scroll_listing_page(page):
@@ -888,17 +943,16 @@ def main():
         sources = []
         if USE_CATEGORY_WALK:
             for category in discover_category_pages(listing_page):
-                # Pages are added up front and the loop below stops early for a
-                # category once one adds nothing new, so a short category costs
-                # one wasted request rather than twelve.
-                for page_no in range(1, CATEGORY_MAX_PAGES + 1):
-                    sources.append({
-                        "url": f"{category['url']}?per_page={CATEGORY_PAGE_SIZE}&page={page_no}",
-                        "main_category": category["main_category"],
-                        "sub_category": category["sub_category"],
-                        "group": category["url"],
-                        "page_no": page_no,
-                    })
+                # Only page 1. The rest are appended as the pager on each page
+                # reveals them, so a category costs exactly as many requests as
+                # it has pages.
+                sources.append({
+                    "url": category["url"],
+                    "main_category": category["main_category"],
+                    "sub_category": category["sub_category"],
+                    "group": category["url"],
+                    "page_no": 1,
+                })
         if not sources:
             print("[WARN] No categories found, falling back to the numbered listing pages")
             sources = [
@@ -908,12 +962,15 @@ def main():
             ]
 
         seen_products: set[str] = set()
-        exhausted: set[str] = set()
+        queued_urls: set[str] = {s["url"] for s in sources}
+        pages_per_group: Counter = Counter(s["group"] for s in sources if s.get("group"))
 
-        for position, source in enumerate(sources, start=1):
-            # Once a category runs out, skip the rest of its pages.
-            if source.get("group") and source["group"] in exhausted:
-                continue
+        # Indexed rather than a for-loop because the list grows as pagers are
+        # read: appending page 2 and 3 of a category while standing on page 1.
+        position = 0
+        while position < len(sources):
+            source = sources[position]
+            position += 1
 
             listing_url = source["url"]
             label = source["sub_category"] or f"page {position}"
@@ -954,13 +1011,27 @@ def main():
             listing_items = [i for i in listing_items if i["product_url"] not in seen_products]
             seen_products.update(i["product_url"] for i in listing_items)
 
-            # Nothing new means this category has no further pages. Storm serves
-            # the last page again rather than an empty one when you overshoot,
-            # so "no new products" is the reliable end marker, not "no products".
-            if not listing_items and source.get("group"):
-                exhausted.add(source["group"])
-
             print(f"[INFO] {len(listing_items)} new product(s) in {label}")
+
+            # Queue any further pages this one links to.
+            group = source.get("group")
+            if group:
+                for url in read_pager_urls(listing_page, group):
+                    if url in queued_urls:
+                        continue
+                    if pages_per_group[group] >= CATEGORY_MAX_PAGES:
+                        print(f"[WARN] {source['sub_category']} claims more than "
+                              f"{CATEGORY_MAX_PAGES} pages; ignoring the rest.")
+                        break
+                    queued_urls.add(url)
+                    pages_per_group[group] += 1
+                    sources.append({
+                        "url": url,
+                        "main_category": source["main_category"],
+                        "sub_category": source["sub_category"],
+                        "group": group,
+                        "page_no": pages_per_group[group],
+                    })
 
             for idx, item in enumerate(listing_items, start=1):
                 print(f"   [{idx}/{len(listing_items)}] {item['product_url']}")
