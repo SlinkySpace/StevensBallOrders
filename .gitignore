@@ -25,3 +25,11 @@ storm_products.csv
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Read-only Next.js proof under web/
+node_modules/
+web/.next/
+web/.env.local
+web/next-env.d.ts
+web/tsconfig.tsbuildinfo
+web/scripts/password-fixtures.json

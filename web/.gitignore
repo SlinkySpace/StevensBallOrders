@@ -1,0 +1,7 @@
+node_modules/
+.next/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Holds the Neon connection string. Never commit.
+.env.local
