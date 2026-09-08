@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import secrets
 import time
+from typing import Optional
 
 import streamlit as st
 
@@ -172,84 +173,122 @@ def account_needs_password(email: str) -> bool:
     return bool(user) and not str(user.get('password_hash') or '').strip()
 
 
-def login_user(email: str, password: str) -> tuple[bool, str]:
+# --- session-free core ----------------------------------------------------
+#
+# Everything except starting a session. Streamlit keeps its session in
+# st.session_state; a web front end keeps one in a signed cookie. The rules
+# that decide whether a login succeeds should not be written twice for that,
+# so they live here and each caller adds its own session handling on top.
+
+
+def authenticate(email: str, password: str) -> tuple[Optional[dict], str]:
+    """Return (user, '') when the credentials are good, else (None, reason)."""
     email = str(email or '').strip().lower()
     if not email:
-        return False, 'Please enter your email address.'
+        return None, 'Please enter your email address.'
 
     locked = lockout_seconds_remaining(email)
     if locked:
-        return False, f'Too many failed attempts. Try again in {locked} seconds.'
+        return None, f'Too many failed attempts. Try again in {locked} seconds.'
 
     user = get_user_by_email(email)
     if not user or not verify_password(password, user.get('password_hash')):
         _record_failure(email)
         # Deliberately identical for unknown emails and wrong passwords, so the
         # form can't be used to discover who has an account.
-        return False, 'Incorrect email or password.'
+        return None, 'Incorrect email or password.'
 
     _clear_failures(email)
+    return user, ''
+
+
+def login_user(email: str, password: str) -> tuple[bool, str]:
+    user, error = authenticate(email, password)
+    if user is None:
+        return False, error
     _start_session(user)
     return True, ''
 
 
-def set_initial_password(email: str, password: str, confirm: str,
-                         access_code: str = '') -> tuple[bool, str]:
+def claim_account(email: str, password: str, confirm: str,
+                  access_code: str = '') -> tuple[Optional[dict], str]:
     """
     First-time password setup for an account created before passwords existed.
-    Logs the user in on success.
+    Session-free: returns the user so the caller can start its own session.
     """
     email = str(email or '').strip().lower()
 
     locked = lockout_seconds_remaining(email)
     if locked:
-        return False, f'Too many failed attempts. Try again in {locked} seconds.'
+        return None, f'Too many failed attempts. Try again in {locked} seconds.'
 
     user = get_user_by_email(email)
     if not user:
-        return False, 'No account found for that email.'
+        return None, 'No account found for that email.'
 
     if str(user.get('password_hash') or '').strip():
-        return False, 'That account already has a password. Please log in instead.'
+        return None, 'That account already has a password. Please log in instead.'
 
     code_problem = _access_code_problem(access_code)
     if code_problem:
         _record_failure(email)
-        return False, code_problem
+        return None, code_problem
 
     problem = password_problem(password, confirm)
     if problem:
-        return False, problem
+        return None, problem
 
     set_user_password(int(user['id']), hash_password(password))
     _clear_failures(email)
-    _start_session(get_user_by_email(email))
-    return True, ''
+    return get_user_by_email(email), ''
 
 
-def signup_user(first_name: str, last_name: str, email: str, password: str,
-                confirm: str, access_code: str = '') -> tuple[bool, str]:
+def register(first_name: str, last_name: str, email: str, password: str,
+             confirm: str, access_code: str = '') -> tuple[Optional[dict], str]:
+    """Create an account. Session-free; returns the new user."""
     first_name = str(first_name or '').strip()
     last_name = str(last_name or '').strip()
     email = str(email or '').strip().lower()
 
     if not first_name or not last_name or not email:
-        return False, 'Please complete all fields.'
+        return None, 'Please complete all fields.'
     if '@' not in email:
-        return False, 'Please enter a valid email address.'
+        return None, 'Please enter a valid email address.'
 
     code_problem = _access_code_problem(access_code)
     if code_problem:
-        return False, code_problem
+        return None, code_problem
 
     problem = password_problem(password, confirm)
     if problem:
-        return False, problem
+        return None, problem
 
     if not create_user(first_name, last_name, email, hash_password(password)):
-        return False, 'An account with that email already exists.'
+        return None, 'An account with that email already exists.'
 
-    _start_session(get_user_by_email(email))
+    return get_user_by_email(email), ''
+
+
+# --- Streamlit session wrappers -------------------------------------------
+# Thin: they add a session to the session-free functions above and nothing else,
+# so the app and any other front end apply identical rules.
+
+
+def set_initial_password(email: str, password: str, confirm: str,
+                         access_code: str = '') -> tuple[bool, str]:
+    user, error = claim_account(email, password, confirm, access_code)
+    if user is None:
+        return False, error
+    _start_session(user)
+    return True, ''
+
+
+def signup_user(first_name: str, last_name: str, email: str, password: str,
+                confirm: str, access_code: str = '') -> tuple[bool, str]:
+    user, error = register(first_name, last_name, email, password, confirm, access_code)
+    if user is None:
+        return False, error
+    _start_session(user)
     return True, ''
 
 
@@ -280,7 +319,12 @@ def is_logged_in() -> bool:
     return st.session_state.get('user') is not None
 
 
+def is_owner_email(email: str) -> bool:
+    """Session-free admin check, for callers that hold an email rather than a session."""
+    owner_emails = {str(owner).strip().lower() for owner in OWNER_EMAILS if str(owner).strip()}
+    return str(email or '').strip().lower() in owner_emails
+
+
 def is_admin() -> bool:
     user = get_current_user()
-    owner_emails = {str(email).strip().lower() for email in OWNER_EMAILS if str(email).strip()}
-    return bool(user and user.get('email', '').strip().lower() in owner_emails)
+    return bool(user and is_owner_email(user.get('email', '')))

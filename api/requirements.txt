@@ -1,0 +1,5 @@
+# The write API. Kept out of the repo requirements.txt, which is what
+# Streamlit Community Cloud installs to run app.py and does not need these.
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
