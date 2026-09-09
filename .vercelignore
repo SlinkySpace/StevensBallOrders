@@ -1,0 +1,21 @@
+# Vercel only needs the API. Everything else is the Streamlit app, the scraper
+# and the Next.js proof, and shipping them makes the function bundle larger and
+# the build slower for no benefit.
+web/
+static/
+tests/
+.github/
+.streamlit/
+scripts/
+app.py
+catalog_admin.py
+storm_scraper.py
+dedupe_products.py
+download_images.py
+optimize_images.py
+label_cleaning.py
+sync_catalog.py
+wipe_orders.py
+catalog.py
+*.csv
+*.db
