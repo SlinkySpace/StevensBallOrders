@@ -73,9 +73,20 @@ def require_writable() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # db.init_db() owns the schema and its migrations, and is idempotent. It is
-    # the only thing in the system allowed to touch schema.
-    db.init_db()
+    """
+    Deliberately does not touch schema against a hosted database.
+
+    db.init_db() creates tables and runs migrations. That is schema ownership,
+    and this service is explicitly not the owner - the Streamlit app and
+    sync_catalog.py are. Running it here also made every cold start depend on
+    reaching Neon, so an unreachable database failed the whole function rather
+    than one request.
+
+    A blank DATABASE_URL means a local SQLite file, which genuinely has no
+    schema until something makes one, so there it still runs.
+    """
+    if not str(getattr(config, 'DATABASE_URL', '') or ''):
+        db.init_db()
     yield
 
 
