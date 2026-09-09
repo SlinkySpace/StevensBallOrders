@@ -52,8 +52,8 @@ except ImportError:
     print('\n0/0 passed (skipped)')
     sys.exit(0)
 
-from api.main import app  # noqa: E402
-from api import sessions  # noqa: E402
+from server.main import app  # noqa: E402
+from server import sessions  # noqa: E402
 
 db.init_db()
 

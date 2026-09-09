@@ -11,7 +11,7 @@ a wrong page, which is recoverable. A wrong write is not.
 
 Run it:
     pip install -r api/requirements.txt
-    SESSION_SECRET=... uvicorn api.main:app --reload --port 8000
+    SESSION_SECRET=... uvicorn server.main:app --reload --port 8000
 """
 
 import os
@@ -32,7 +32,7 @@ import config  # noqa: E402
 import db  # noqa: E402
 import runtime  # noqa: E402
 
-from api import sessions  # noqa: E402
+from server import sessions  # noqa: E402
 
 
 ORDER_STATUSES = ('submitted', 'approved', 'ordered', 'fulfilled', 'cancelled')

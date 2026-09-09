@@ -14,7 +14,7 @@ which is recoverable; a wrong write is not.
 ```bash
 pip install -r api/requirements.txt
 python -c "import secrets; print(secrets.token_urlsafe(48))"   # SESSION_SECRET
-SESSION_SECRET=<that> uvicorn api.main:app --reload --port 8000
+SESSION_SECRET=<that> uvicorn server.main:app --reload --port 8000
 ```
 
 **It refuses to start against the hosted database** unless

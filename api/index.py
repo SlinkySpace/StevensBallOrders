@@ -3,12 +3,15 @@ Vercel entrypoint.
 
 Vercel's Python runtime turns a file under api/ into a serverless function and
 looks for an ASGI application named `app`. vercel.json rewrites every path here,
-so this one function serves the whole API rather than Vercel publishing a route
-per file - which is what it did on the first deploy, exposing api/sessions.py as
-an endpoint.
+so this one function serves the whole API.
+
+Everything else lives in server/, not here. Vercel treats every .py file under
+api/ as its own function and expects each to export a handler - so keeping
+sessions.py and main.py here published them as endpoints and, more to the
+point, gave the build files it could not turn into functions.
 
 The repo root goes on sys.path *here*, before anything imports `api.main`.
-api/main.py sets it too, but that line cannot run until the import of api.main
+server/main.py sets it too, but that line cannot run until the import of it
 has already succeeded, and locally that import only worked because the process
 happened to start in the repo root.
 """
@@ -22,7 +25,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 try:
-    from api.main import app  # noqa: F401  (Vercel imports `app` from here)
+    from server.main import app  # noqa: F401  (Vercel imports `app` from here)
 except Exception as exc:  # pragma: no cover - only on a broken deployment
     # A serverless function that fails to import returns
     # FUNCTION_INVOCATION_FAILED and nothing else, which says the same thing

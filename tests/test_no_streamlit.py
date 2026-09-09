@@ -127,7 +127,7 @@ except RuntimeError:
 print('\n== the write API imports and answers ==')
 try:
     from fastapi.testclient import TestClient
-    from api.main import app
+    from server.main import app
     client = TestClient(app)
     r = client.get('/api/auth/me')
     check('GET /api/auth/me works with no Streamlit installed',
