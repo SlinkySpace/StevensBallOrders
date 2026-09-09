@@ -13,7 +13,7 @@ import secrets
 import time
 from typing import Optional
 
-import streamlit as st
+import runtime
 
 from config import MIN_PASSWORD_LENGTH, OWNER_EMAILS, TEAM_ACCESS_CODE
 from db import (
@@ -133,8 +133,8 @@ def _clear_failures(email: str) -> None:
 
 def init_session_state():
     for key, value in SESSION_DEFAULTS.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+        if key not in runtime.session_state:
+            runtime.session_state[key] = value
 
 
 def _public_user(user) -> dict:
@@ -143,24 +143,24 @@ def _public_user(user) -> dict:
 
 
 def _start_session(user) -> None:
-    st.session_state['user_email'] = user['email']
-    st.session_state['user'] = _public_user(user)
-    st.session_state['cart'] = get_saved_cart(int(user['id']))
+    runtime.session_state['user_email'] = user['email']
+    runtime.session_state['user'] = _public_user(user)
+    runtime.session_state['cart'] = get_saved_cart(int(user['id']))
 
 
 def refresh_user_session():
-    email = st.session_state.get('user_email')
+    email = runtime.session_state.get('user_email')
     if not email:
-        st.session_state['user'] = None
+        runtime.session_state['user'] = None
         return
     user = get_user_by_email(email)
-    st.session_state['user'] = _public_user(user) if user else None
+    runtime.session_state['user'] = _public_user(user) if user else None
 
 
 def logout_user():
-    st.session_state['user_email'] = None
-    st.session_state['user'] = None
-    st.session_state['cart'] = []
+    runtime.session_state['user_email'] = None
+    runtime.session_state['user'] = None
+    runtime.session_state['cart'] = []
 
 
 # --------------------------------------------------------------------------
@@ -176,7 +176,7 @@ def account_needs_password(email: str) -> bool:
 # --- session-free core ----------------------------------------------------
 #
 # Everything except starting a session. Streamlit keeps its session in
-# st.session_state; a web front end keeps one in a signed cookie. The rules
+# runtime.session_state; a web front end keeps one in a signed cookie. The rules
 # that decide whether a login succeeds should not be written twice for that,
 # so they live here and each caller adds its own session handling on top.
 
@@ -312,11 +312,11 @@ def change_password(email: str, current_password: str, new_password: str,
 
 
 def get_current_user():
-    return st.session_state.get('user')
+    return runtime.session_state.get('user')
 
 
 def is_logged_in() -> bool:
-    return st.session_state.get('user') is not None
+    return runtime.session_state.get('user') is not None
 
 
 def is_owner_email(email: str) -> bool:

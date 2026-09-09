@@ -1,7 +1,6 @@
-import os
 from pathlib import Path
 
-import streamlit as st
+import runtime
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -10,16 +9,12 @@ def _secret(key: str, default=None):
     """
     Read a secret without exploding when there is no secrets.toml.
 
-    st.secrets.get() raises StreamlitSecretNotFoundError if the file is absent,
-    which used to crash the app on import for anyone running it from a fresh
-    clone. Environment variables are checked too, so non-Streamlit hosts work.
+    Delegates to runtime.secret, which reads st.secrets when running under
+    Streamlit and falls back to the environment otherwise - so the same config
+    works in the app, in the scraper's sync, and in a serverless function with
+    no Streamlit installed.
     """
-    try:
-        if key in st.secrets:
-            return st.secrets[key]
-    except Exception:
-        pass
-    return os.environ.get(key, default)
+    return runtime.secret(key, default)
 
 
 def _secret_bool(key: str, default: bool) -> bool:

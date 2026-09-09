@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
-import streamlit as st
+import runtime
 
 from config import DATABASE_URL, DB_PATH, BALL_BATCH_THRESHOLD, BALL_PENDING_STATUSES
 from email_utils import maybe_send_ball_batch_email, send_order_status_email
@@ -187,7 +187,7 @@ def _dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
-@st.cache_resource(show_spinner=False)
+@runtime.cache_resource(show_spinner=False)
 def _get_pool():
     """
     One shared Postgres pool for the whole server process.
@@ -371,7 +371,7 @@ def _add_column_if_missing(conn, table: str, column: str, definition: str) -> No
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
-@st.cache_resource(show_spinner=False)
+@runtime.cache_resource(show_spinner=False)
 def _run_migrations_once() -> bool:
     with get_conn() as conn:
         # Must run before the schema below, since it renames the old table out

@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 import auth  # noqa: E402
 import config  # noqa: E402
 import db  # noqa: E402
+import runtime  # noqa: E402
 
 from api import sessions  # noqa: E402
 
@@ -37,32 +38,41 @@ from api import sessions  # noqa: E402
 ORDER_STATUSES = ('submitted', 'approved', 'ordered', 'fulfilled', 'cancelled')
 
 
-def _guard_production() -> None:
+def _write_block_reason() -> str | None:
     """
-    Refuse to start against the hosted database unless told to.
+    Why writes are refused, or None when they are allowed.
 
-    Streamlit is still the live app. This service exists but is not in front of
-    anyone yet, so the default has to be that running it locally cannot write to
-    the database the team is ordering from. Set ALLOW_PRODUCTION_WRITES=1 when
-    that changes.
+    Streamlit is still the live app. This service can write to the same
+    database, so pointing it at production has to be a deliberate act rather
+    than a side effect of deploying.
+
+    Reported rather than raised. Raising at startup crashes the function, and a
+    crashed serverless function looks exactly like a missing dependency - which
+    is the bug this deployment already had once. Refusing per request instead
+    keeps the reason visible at /api/health.
     """
     url = str(getattr(config, 'DATABASE_URL', '') or '')
     if not url:
-        return  # local SQLite, nothing to protect
+        return None  # local SQLite, nothing to protect
     if os.environ.get('ALLOW_PRODUCTION_WRITES', '').lower() in {'1', 'true', 'yes'}:
-        return
+        return None
     host = url.split('@')[-1].split('/')[0]
-    raise RuntimeError(
-        f'Refusing to start: DATABASE_URL points at {host}, which is the live '
-        'database the Streamlit app serves. This service can write, and nothing '
-        'is in front of it yet. Set ALLOW_PRODUCTION_WRITES=1 to override, or '
-        'blank DATABASE_URL to use the local SQLite file.'
+    return (
+        f'Writes are disabled: DATABASE_URL points at {host}, the live database '
+        'the Streamlit app serves, and ALLOW_PRODUCTION_WRITES is not set. '
+        'Reads work. Set ALLOW_PRODUCTION_WRITES=1 when this service is meant '
+        'to take orders.'
     )
+
+
+def require_writable() -> None:
+    reason = _write_block_reason()
+    if reason:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, reason)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    _guard_production()
     # db.init_db() owns the schema and its migrations, and is idempotent. It is
     # the only thing in the system allowed to touch schema.
     db.init_db()
@@ -168,7 +178,7 @@ def login(body: Credentials, response: Response):
 
 
 @app.post('/api/auth/signup')
-def signup(body: Registration, response: Response):
+def signup(body: Registration, response: Response, _writable=Depends(require_writable)):
     user, error = auth.register(body.first_name, body.last_name, body.email,
                                 body.password, body.confirm, body.access_code)
     if user is None:
@@ -178,7 +188,7 @@ def signup(body: Registration, response: Response):
 
 
 @app.post('/api/auth/claim')
-def claim(body: ClaimAccount, response: Response):
+def claim(body: ClaimAccount, response: Response, _writable=Depends(require_writable)):
     """Set a password on an account created before passwords existed."""
     user, error = auth.claim_account(body.email, body.password,
                                      body.confirm, body.access_code)
@@ -203,7 +213,8 @@ def me(user=Depends(current_user)):
 
 
 @app.post('/api/auth/password')
-def change_password(body: PasswordChange, user=Depends(require_user)):
+def change_password(body: PasswordChange, user=Depends(require_user),
+                    _writable=Depends(require_writable)):
     ok, error = auth.change_password(str(user['email']), body.current_password,
                                      body.new_password, body.confirm)
     if not ok:
@@ -233,7 +244,8 @@ def read_cart(user=Depends(require_user)):
 
 
 @app.put('/api/cart')
-def write_cart(lines: list[CartLine], user=Depends(require_user)):
+def write_cart(lines: list[CartLine], user=Depends(require_user),
+               _writable=Depends(require_writable)):
     db.save_cart(int(user['id']), [line.model_dump() for line in lines])
     return {'ok': True, 'lines': len(lines)}
 
@@ -250,7 +262,8 @@ def my_orders(user=Depends(require_user)):
 
 
 @app.post('/api/orders')
-def place_order(body: Checkout, user=Depends(require_user)):
+def place_order(body: Checkout, user=Depends(require_user),
+                _writable=Depends(require_writable)):
     """
     Turn the saved cart into an order.
 
@@ -277,7 +290,9 @@ def all_orders(_admin=Depends(require_admin)):
 
 
 @app.patch('/api/admin/orders/{order_id}')
-def set_order_status(order_id: int, body: StatusChange, _admin=Depends(require_admin)):
+def set_order_status(order_id: int, body: StatusChange,
+                     _admin=Depends(require_admin),
+                     _writable=Depends(require_writable)):
     if body.status not in ORDER_STATUSES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -291,4 +306,12 @@ def set_order_status(order_id: int, body: StatusChange, _admin=Depends(require_a
 
 @app.get('/api/health')
 def health():
-    return {'ok': True, 'products': db.count_products()}
+    """Whether this deployment can read, and whether it may write."""
+    blocked = _write_block_reason()
+    return {
+        'ok': True,
+        'products': db.count_products(),
+        'writes_enabled': blocked is None,
+        'writes_blocked_because': blocked,
+        'streamlit_installed': runtime.RUNNING_UNDER_STREAMLIT,
+    }

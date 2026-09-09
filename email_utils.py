@@ -1,7 +1,7 @@
 import smtplib
 from email.message import EmailMessage
 
-import streamlit as st
+import runtime
 
 from config import (
     OWNER_EMAILS,
@@ -59,7 +59,7 @@ def maybe_send_ball_batch_email(current_count: int) -> None:
     for owner_email in owner_emails:
         send_email(subject, body, owner_email)
     try:
-        st.toast('Owner notification sent for bowling ball batch.')
+        runtime.toast('Owner notification sent for bowling ball batch.')
     except Exception:
         pass
 
@@ -139,6 +139,6 @@ def send_order_status_email(order: dict, new_status: str) -> None:
     )
     send_email(subject, body, to_email)
     try:
-        st.toast(f"Status email sent to {to_email}.")
+        runtime.toast(f"Status email sent to {to_email}.")
     except Exception:
         pass

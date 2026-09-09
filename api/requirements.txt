@@ -1,5 +1,12 @@
-# The write API. Kept out of the repo requirements.txt, which is what
-# Streamlit Community Cloud installs to run app.py and does not need these.
+# Installed by Vercel for the serverless function.
+#
+# Streamlit is deliberately NOT here. runtime.py lets db.py, auth.py and
+# config.py work without it, which keeps this bundle small enough for a
+# serverless function and cuts a five-second import to under one.
+# The repo root requirements.txt is the Streamlit app and is separate.
 fastapi>=0.115
-uvicorn[standard]>=0.32
 pydantic>=2.9
+psycopg[binary,pool]>=3.2
+
+# Only needed to run it locally; Vercel provides its own server.
+uvicorn[standard]>=0.32
