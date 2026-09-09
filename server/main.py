@@ -18,6 +18,7 @@ import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 # Import the app's modules from the repo root, so this service uses the same
 # db.py the Streamlit app and the scraper use rather than a copy of it.
@@ -38,7 +39,7 @@ from server import sessions  # noqa: E402
 ORDER_STATUSES = ('submitted', 'approved', 'ordered', 'fulfilled', 'cancelled')
 
 
-def _write_block_reason() -> str | None:
+def _write_block_reason() -> Optional[str]:
     """
     Why writes are refused, or None when they are allowed.
 
@@ -115,7 +116,7 @@ def _public(user) -> dict:
 
 # --- session plumbing ------------------------------------------------------
 
-def current_user(session: str | None = Cookie(default=None, alias=sessions.COOKIE_NAME)):
+def current_user(session: Optional[str] = Cookie(default=None, alias=sessions.COOKIE_NAME)):
     """The signed-in user, re-read from the database on every request."""
     email = sessions.read(session)
     if not email:

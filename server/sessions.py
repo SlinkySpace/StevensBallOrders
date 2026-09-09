@@ -17,6 +17,7 @@ import hmac
 import json
 import os
 import time
+from typing import Optional
 
 COOKIE_NAME = 'bowling_session'
 MAX_AGE_SECONDS = 14 * 24 * 60 * 60  # two weeks
@@ -53,7 +54,7 @@ def issue(email: str) -> str:
     return f'{body}.{_b64encode(signature)}'
 
 
-def read(cookie: str | None) -> str | None:
+def read(cookie: Optional[str]) -> Optional[str]:
     """Return the email a cookie vouches for, or None if it does not."""
     if not cookie or '.' not in cookie:
         return None
