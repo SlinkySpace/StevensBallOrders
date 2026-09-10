@@ -1,11 +1,15 @@
-# Vercel only needs the API. Everything else is the Streamlit app, the scraper
-# and the frontend, and shipping them makes the function bundle larger and the
-# build slower for no benefit.
+# Trims the API function bundle: the Streamlit app and the scraper never run in
+# it, and shipping them only makes it larger.
 #
-# static/ is the exception: the API serves the catalog images now, because the
-# frontend deploys as its own project rooted at web/ and cannot read a
-# directory outside that root. 12MB, and the CDN caches them after first hit.
-web/
+# This file is at the repository root, so it applies to *both* Vercel projects
+# in this repo - including the frontend, which is rooted at web/. Listing web/
+# here deleted it before the build ran and produced a deployment with no output
+# at all. It stays out of the list; 404KB of source against the 12MB of images
+# below is not worth a second broken project.
+#
+# static/ is deliberately absent: the API serves the catalog images, because the
+# frontend is its own project rooted at web/ and cannot read a directory outside
+# that root. The CDN caches them after the first hit.
 tests/
 .github/
 .streamlit/
