@@ -415,8 +415,15 @@ def products(_user=Depends(require_user)):
 
     Behind a session because these are the team's sponsor prices, which are not
     the public ones and are not ours to publish.
+
+    Out of stock and unpriced products are left out rather than shown greyed:
+    Storm drops the price from a product page when it cannot be ordered, so
+    those two are the same 22 items today, and both rendered as a $0.00 card
+    with a working Add to cart. The Catalog Manager still lists them, which is
+    where a price gets fixed.
     """
-    rows = [_decorate(p) for p in db.get_products(visible_only=True)]
+    rows = [_decorate(p) for p in
+            db.get_products(visible_only=True, in_stock_only=True, priced_only=True)]
     mains = sorted({r['main_category'] for r in rows if r['main_category']})
     subs = sorted({r['sub_category'] for r in rows if r['sub_category']})
     return {'products': rows, 'main_categories': mains, 'sub_categories': subs}

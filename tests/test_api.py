@@ -261,7 +261,6 @@ check('the visible count excludes it',
 r = good.get('/api/products')
 check('a shopper is not shown the hidden product',
       all(p['sku'] != 'BBMVXA' for p in r.json()['products']), r.text[:160])
-
 r = owner.post('/api/admin/catalog/products', json={
     'product_url': 'club-warmup-2026', 'name': 'Club warmup shirt',
     'sku': 'CLUB-WARMUP', 'price': 30.0, 'product_type': 'apparel',
@@ -277,6 +276,29 @@ r = owner.post('/api/admin/catalog/products/delete',
                json={'product_urls': ['club-warmup-2026']})
 check('the owner can delete a product', r.status_code == 200, r.text[:200])
 check('it is gone', db.count_products() == BASE_PRODUCTS + 2, str(db.count_products()))
+
+print('\n== out of stock and unpriced are not offered ==')
+# Storm drops the price from a product page when the item cannot be ordered, so
+# out of stock and price 0 arrive together - but upsert_products keeps the last
+# known price when a scrape reports 0, so an item can also sell out with its
+# price intact. Both have to be kept out of the catalog, and the two cases are
+# checked separately because either clause alone would pass with only one of
+# them present.
+db.upsert_products([
+    {**product, 'product_url': 'https://www.stormbowling.com/sold-out',
+     'name': 'SOLD OUT BALL', 'sku': 'SOLD1', 'price': 189.0, 'in_stock': False},
+    {**product, 'product_url': 'https://www.stormbowling.com/no-price',
+     'name': 'UNPRICED BALL', 'sku': 'NOPRICE1', 'price': 0.0, 'in_stock': True},
+], mode='refresh', updated_by='test')
+
+shopper_skus = {p['sku'] for p in good.get('/api/products').json()['products']}
+check('an out-of-stock product is not offered', 'SOLD1' not in shopper_skus)
+check('a product with no price is not offered', 'NOPRICE1' not in shopper_skus)
+check('a normal product still is', 'TB1' in shopper_skus, str(len(shopper_skus)))
+
+admin_skus = {p['sku'] for p in owner.get('/api/admin/catalog').json()['products']}
+check('the Catalog Manager still lists both, so a price can be fixed',
+      {'SOLD1', 'NOPRICE1'} <= admin_skus, str(len(admin_skus)))
 
 print('\n== health ==')
 r = fresh_client().get('/api/health')

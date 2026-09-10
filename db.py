@@ -890,13 +890,28 @@ def _normalize_product(row: dict) -> dict:
     return row
 
 
-def get_products(visible_only: bool = False, in_stock_only: bool = False) -> list[dict]:
+def get_products(visible_only: bool = False, in_stock_only: bool = False,
+                 priced_only: bool = False) -> list[dict]:
+    """
+    Products, optionally narrowed to the ones a shopper may actually order.
+
+    in_stock_only and priced_only are separate because they catch different
+    things, even though today they select the same 22 rows. upsert_products
+    keeps a stored price when a scrape reports 0 (an out-of-stock page reports
+    no price, and overwriting a good price with 0 was a real bug), so an item
+    that sells out keeps its last known price and is caught only by in_stock.
+    An item that has never had a price scraped is caught only by priced_only -
+    and it must be caught, because the catalog would otherwise offer it at
+    $0.00 and the cart would happily take the order.
+    """
     query = "SELECT * FROM products"
     clauses = []
     if visible_only:
         clauses.append("is_visible = " + ("TRUE" if USE_POSTGRES else "1"))
     if in_stock_only:
         clauses.append("in_stock = " + ("TRUE" if USE_POSTGRES else "1"))
+    if priced_only:
+        clauses.append("price > 0")
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
     query += " ORDER BY main_category, sub_category, name"
