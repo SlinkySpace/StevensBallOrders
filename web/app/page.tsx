@@ -139,8 +139,18 @@ function Catalog() {
         </div>
       )}
 
+      {/*
+        Four across at full width, then 3/2/1 as it narrows.
+
+        The container is 1320 wide less 28px of padding a side, so 1264 of
+        track. auto-fill packs floor((1264 + 18) / (min + 18)) columns, which
+        puts the cutoff for a fifth at min > 238 and the floor for a fourth at
+        min <= 302. 280 sits in the middle of that window rather than on an
+        edge, so a later change to the padding or the gap does not silently
+        add a column back.
+      */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 18,
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 18,
       }}>
         {shown.map((product) => (
           <ProductCard
