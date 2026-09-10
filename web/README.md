@@ -88,12 +88,20 @@ the API mounts the one set and this side proxies to it.
 
 ## Deploying
 
-Two Vercel projects from this repo:
+Two Vercel projects from this repo, both on the `stevens-bowling` team:
 
-| Project | Root Directory |
-| --- | --- |
-| API | *(blank)* |
-| Web | `web` |
+| Project | Root Directory | URL |
+| --- | --- | --- |
+| `api` | *(blank)* | `api-stevens-bowling.vercel.app` |
+| `web` | `web` | `web-stevens-bowling.vercel.app` |
+
+`.vercelignore` is at the repository root and applies to **both** of them, so
+nothing the frontend needs may be listed in it. `web/` was, and the frontend
+deployed in twelve milliseconds with no output at all.
+
+Because `web` has a Root Directory, a commit that touches nothing inside it does
+not redeploy it. That is correct, and it means a change to `.vercelignore` or to
+the API alone leaves the frontend on its previous build.
 
 The API project needs `DATABASE_URL`, `SESSION_SECRET`, `COOKIE_SECURE=1`, and
 `ALLOW_PRODUCTION_WRITES=1` when it should take real orders. The web project
