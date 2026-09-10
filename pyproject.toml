@@ -1,14 +1,31 @@
-# Vercel's FastAPI detection reads this.
+# Vercel's Python build reads this: uv resolves dependencies from [project],
+# and [tool.vercel] names the entrypoint.
 #
-# It inspects api/index.py statically and looks for a module-level assignment
-# of a FastAPI instance. That file binds `app` inside a try/except - deliberately,
-# so a deployment that cannot import server.main answers with the reason instead
-# of FUNCTION_INVOCATION_FAILED - and a static read cannot see through that:
+# The dependencies are the API's, not the repo's. server/main.py imports
+# fastapi, pydantic and - through db.py - psycopg, and nothing else that is not
+# a local module. pandas and requests stay out deliberately: they belong to the
+# scraper and sync_catalog, which run on a developer's machine, and shipping
+# them would put ~100MB into a function that never imports them. That is the
+# same reasoning api/requirements.txt was written with.
+[project]
+name = "stevens-ball-orders-api"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "pydantic>=2.9",
+    "psycopg[binary,pool]>=3.2",
+]
+
+# Vercel inspects api/index.py statically and looks for a module-level FastAPI
+# instance. That file binds `app` inside a try/except - deliberately, so a
+# deployment that cannot import server.main answers with the reason instead of
+# FUNCTION_INVOCATION_FAILED - and a static read cannot see through that:
 #
 #   Found api/index.py but it does not define a top-level "app" FastAPI instance
 #   but found potential entrypoints: server/main.py (variable: app)
 #
-# Naming the entrypoint outright is what the build log asks for, and it points at
-# the real application rather than the shim.
+# Naming the entrypoint is what the build log asks for, and it points at the
+# real application rather than the shim.
 [tool.vercel]
 entrypoint = "server.main:app"
