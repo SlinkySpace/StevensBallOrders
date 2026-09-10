@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import sqlite3
 from collections import Counter
@@ -13,6 +14,14 @@ from config import DATABASE_URL, DB_PATH, BALL_BATCH_THRESHOLD, BALL_PENDING_STA
 from email_utils import maybe_send_ball_batch_email, send_order_status_email
 
 USE_POSTGRES = bool(DATABASE_URL)
+
+# Bound unconditionally so the names exist even when the Postgres import below
+# is skipped. USE_POSTGRES is decided at import from DATABASE_URL, but the tests
+# flip it afterwards to exercise the Postgres paths against a temporary SQLite
+# file - and _get_pool() reads ConnectionPool, which was then simply undefined.
+psycopg = None
+dict_row = None
+ConnectionPool = None
 
 if USE_POSTGRES:
     import psycopg
@@ -187,17 +196,40 @@ def _dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
+def _on_serverless() -> bool:
+    """
+    Whether this process is a serverless function rather than a long-lived server.
+
+    Vercel sets VERCEL on every deployment; the Lambda variable covers the same
+    shape of runtime elsewhere.
+    """
+    return bool(os.environ.get('VERCEL') or os.environ.get('AWS_LAMBDA_FUNCTION_NAME'))
+
+
 @runtime.cache_resource(show_spinner=False)
 def _get_pool():
     """
-    One shared Postgres pool for the whole server process.
+    One shared Postgres pool for the whole server process - where there is one.
 
     Opening a connection to a hosted Postgres costs a TLS handshake, which the
     app used to pay on every single rerun - twice, because init_db() and
     refresh_user_session() each opened their own. Reusing pooled connections
     removes that from the critical path.
+
+    None of which applies to a serverless function, and there it actively
+    breaks. ConnectionPool(open=True) fills itself from a background worker
+    thread; the runtime freezes the process between invocations and does not
+    schedule that thread the way a real server does, so pool.connection() waits
+    out its timeout and every request dies with
+
+        PoolTimeout: couldn't get a connection after 30.00 sec
+
+    which is exactly how the deployed API failed. A pool cannot outlive the
+    container anyway, so there is nothing to reuse and nothing to lose:
+    get_conn() falls through to opening one connection per request, which is
+    what serverless wants.
     """
-    if not USE_POSTGRES or ConnectionPool is None:
+    if not USE_POSTGRES or ConnectionPool is None or _on_serverless():
         return None
 
     pool = ConnectionPool(

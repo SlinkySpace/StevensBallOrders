@@ -108,6 +108,40 @@ check('products can be written', db.count_products() == 1, str(db.count_products
 print('\n== the connection-pool cache still memoises ==')
 check('_get_pool returns the same object twice', db._get_pool() is db._get_pool())
 
+print('\n== no connection pool on serverless ==')
+# psycopg_pool fills itself from a background worker thread. A serverless
+# runtime freezes the process between invocations and does not schedule that
+# thread the way a real server does, so pool.connection() waits out its timeout
+# and every request dies with PoolTimeout - which is how the deployed API
+# failed. A pool cannot outlive the container anyway, so there it is skipped
+# and get_conn() opens one connection per request instead.
+_saved = (db.USE_POSTGRES, db.DATABASE_URL, os.environ.get('VERCEL'))
+try:
+    db.USE_POSTGRES = True
+    db.DATABASE_URL = 'postgresql://user:pass@example.invalid/db'
+
+    try:
+        from psycopg_pool import ConnectionPool as _Pool
+        db.ConnectionPool = _Pool
+    except ImportError:
+        _Pool = None
+
+    os.environ.pop('VERCEL', None)
+    db._get_pool.clear()
+    if _Pool is not None:
+        check('a long-lived server still gets a pool', db._get_pool() is not None)
+
+    os.environ['VERCEL'] = '1'
+    db._get_pool.clear()
+    check('a serverless function gets none', db._get_pool() is None)
+finally:
+    db.ConnectionPool = None if _Pool is None else _Pool
+    db.USE_POSTGRES, db.DATABASE_URL, _vercel = _saved
+    os.environ.pop('VERCEL', None)
+    if _vercel is not None:
+        os.environ['VERCEL'] = _vercel
+    db._get_pool.clear()
+
 print('\n== session state refuses rather than leaking ==')
 # A module-level dict would be per-process, and a warm serverless container
 # serves many users from one process, so a silent fallback would hand one
