@@ -171,6 +171,20 @@ except ImportError as exc:
 except Exception as exc:
     check('the API starts without Streamlit', False, repr(exc))
 
+print('\n== DATABASE_URL survives being pasted with its quotes on ==')
+# Vercel stores whatever is pasted into the dashboard. With the quotes left on,
+# psycopg stops seeing a URI and reads the whole string as a keyword/value
+# connstring, splitting it at the first "=" and reporting the URL as an unknown
+# option name. Nothing before psycopg noticed, because the value was non-empty.
+_URI = 'postgresql://u:p@host.neon.tech/neondb?sslmode=require'
+check('double quotes are stripped', config._unquote(f'"{_URI}"') == _URI)
+check('single quotes are stripped', config._unquote(f"'{_URI}'") == _URI)
+check('whitespace outside the quotes is stripped',
+      config._unquote(f'  "{_URI}"  ') == _URI)
+check('an unquoted URL is untouched', config._unquote(_URI) == _URI)
+check('an empty value stays empty', config._unquote('') == '')
+check('an unmatched quote is left alone', config._unquote('post"gres') == 'post"gres')
+
 DB.unlink(missing_ok=True)
 print(f'\n{sum(results)}/{len(results)} passed')
 sys.exit(0 if all(results) else 1)

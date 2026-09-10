@@ -27,8 +27,26 @@ def _secret_bool(key: str, default: bool) -> bool:
 # Local SQLite fallback
 DB_PATH = BASE_DIR / 'bowling_orders.db'
 
+def _unquote(value: str) -> str:
+    """
+    Strip a matched pair of surrounding quotes off an environment value.
+
+    Dashboards and .env files invite pasting a value with the quotes still on
+    it, and nothing downstream notices: the string is non-empty, so
+    USE_POSTGRES is true and the app starts. psycopg is where it surfaces, and
+    badly - a connection string that does not begin with "postgresql://" is
+    treated as keyword/value pairs instead of a URI, so it splits on the first
+    "=" and reports the URL itself as an unknown option name. No legitimate
+    Postgres URI starts with a quote, so removing them is unambiguous.
+    """
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in '"\'':
+        value = value[1:-1].strip()
+    return value
+
+
 # Hosted database option (Neon / Supabase Postgres)
-DATABASE_URL = str(_secret("DATABASE_URL", "") or "").strip()
+DATABASE_URL = _unquote(str(_secret("DATABASE_URL", "") or ""))
 
 CATALOG_CSV = BASE_DIR / 'storm_products_tagged.csv'
 
