@@ -34,7 +34,7 @@ function Outstanding() {
   return (
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: '36px 28px 80px' }}>
       <h1 className="h1">Outstanding Orders</h1>
-      <p className="sub">Placed but not yet fulfilled.</p>
+      <p className="sub">Orders you&apos;ve placed that haven&apos;t come in yet.</p>
 
       {loading ? (
         <div style={{ color: 'var(--dim)', fontSize: 14 }}>Loading…</div>

@@ -32,12 +32,12 @@ function Cart() {
     return (
       <main style={{ maxWidth: 1320, margin: '0 auto', padding: '36px 28px 80px' }}>
         <h1 className="h1">Cart</h1>
-        <p className="sub">Adjust quantities and options before checking out.</p>
+        <p className="sub">Set quantities and weights here, then head to checkout.</p>
         <div className="empty">
           <div className="empty__icon">🛒</div>
           <div className="empty__title">Your cart is empty</div>
           <div className="empty__body" style={{ marginBottom: 22 }}>
-            Add something from the Catalog and it will show up here.
+            Add something from the catalog and it turns up here.
           </div>
           <a href="/" className="btn" style={{ display: 'inline-block', textDecoration: 'none' }}>
             Browse the catalog
@@ -53,7 +53,7 @@ function Cart() {
   return (
     <main style={{ maxWidth: 1320, margin: '0 auto', padding: '36px 28px 80px' }}>
       <h1 className="h1">Cart</h1>
-      <p className="sub">Adjust quantities and options before checking out.</p>
+      <p className="sub">Set quantities and weights here, then head to checkout.</p>
 
       <div className="cart-grid" style={{
         display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px',

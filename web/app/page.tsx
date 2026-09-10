@@ -89,7 +89,7 @@ function Catalog() {
               letterSpacing: '-0.03em', margin: '0 0 8px',
             }}>Catalog</h1>
             <p style={{ fontSize: 15, color: 'var(--dim)', margin: 0 }}>
-              Storm equipment at team sponsor pricing.
+              Everything here is at the team&apos;s sponsor price.
               {fresh && (
                 <span style={{ color: fresh.stale ? 'var(--ink)' : 'var(--dim2)' }}>
                   {' '}Prices updated {fresh.age}.
@@ -134,8 +134,8 @@ function Catalog() {
       {!loading && filtered.length === 0 && (
         <div className="empty">
           <div className="empty__icon">🎳</div>
-          <div className="empty__title">No products match those filters.</div>
-          <div className="empty__body">Try a different category or clear the search.</div>
+          <div className="empty__title">Nothing matches that.</div>
+          <div className="empty__body">Try another category, or clear the search.</div>
         </div>
       )}
 
@@ -302,7 +302,7 @@ function ProductCard({ product, open, onToggle, onAdd }: {
             </div>
             <div>
               <label className="label label--sm">Note</label>
-              <input className="field field--sm" value={note} placeholder="optional"
+              <input className="field field--sm" value={note}
                      onChange={(e) => setNote(e.target.value)} />
             </div>
           </div>

@@ -21,11 +21,11 @@ function Checkout() {
     return (
       <main style={{ maxWidth: 1000, margin: '0 auto', padding: '36px 28px 80px' }}>
         <h1 className="h1">Checkout</h1>
-        <p className="sub">One order, containing everything below.</p>
+        <p className="sub">Everything below goes in as one order.</p>
         <div className="empty">
           <div className="empty__icon">✅</div>
-          <div className="empty__title">Nothing to check out</div>
-          <div className="empty__body">Add items to your cart first.</div>
+          <div className="empty__title">Your cart is empty</div>
+          <div className="empty__body">Add something from the catalog first.</div>
         </div>
       </main>
     )
@@ -53,7 +53,7 @@ function Checkout() {
   return (
     <main style={{ maxWidth: 1000, margin: '0 auto', padding: '36px 28px 80px' }}>
       <h1 className="h1">Checkout</h1>
-      <p className="sub">One order, containing everything below.</p>
+      <p className="sub">Everything below goes in as one order.</p>
 
       <div className="card" style={{ overflow: 'hidden', marginBottom: 20 }}>
         <div style={{
@@ -102,7 +102,6 @@ function Checkout() {
 
       <label className="label">Checkout note (optional)</label>
       <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
-                placeholder="Anything the captains should know about this order"
                 className="field" style={{ resize: 'vertical', marginBottom: 22, lineHeight: 1.5 }} />
 
       <button className="btn" onClick={placeOrder} disabled={busy} style={{ padding: '14px 26px' }}>

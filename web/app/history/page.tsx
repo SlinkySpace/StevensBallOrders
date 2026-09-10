@@ -34,7 +34,7 @@ function History() {
   return (
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: '36px 28px 80px' }}>
       <h1 className="h1">Order History</h1>
-      <p className="sub">Every order you have placed, in any state.</p>
+      <p className="sub">Everything you&apos;ve ordered, whatever state it is in.</p>
 
       {loading ? (
         <div style={{ color: 'var(--dim)', fontSize: 14 }}>Loading…</div>

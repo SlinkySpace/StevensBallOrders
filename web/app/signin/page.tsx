@@ -98,8 +98,8 @@ export default function SignInPage() {
             fontSize: 17, lineHeight: 1.55, color: 'var(--dim)',
             margin: '0 0 28px', maxWidth: '44ch',
           }}>
-            Browse the Storm catalog, build a cart, and the captains place it in a
-            batch. Sign in with your Stevens email.
+            Pick out what you want, and the captains put it all in as one order.
+            Sign in with your Stevens email.
           </p>
         </div>
 
@@ -131,8 +131,8 @@ export default function SignInPage() {
           </h2>
           <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--dim)', margin: '0 0 24px' }}>
             {tab === 'login' ? 'Email and password, same as always.'
-              : tab === 'signup' ? "You'll need the team access code from a captain."
-              : 'If your account was created before passwords were added, set your password here. Your orders and balance stay exactly as they are.'}
+              : tab === 'signup' ? "Ask a captain for the team access code - you'll need it below."
+              : 'Your account is older than the password screen. Pick one here and everything you have already ordered stays put.'}
           </p>
 
           <form onSubmit={submit} style={{ display: 'grid', gap: 16 }}>
@@ -151,14 +151,12 @@ export default function SignInPage() {
 
             <div>
               <label className="label">Email</label>
-              <input className="field" type="email" placeholder="you@stevens.edu"
-                     value={form.email} onChange={set('email')} autoComplete="email" required />
+              <input className="field" type="email" value={form.email} onChange={set('email')} autoComplete="email" required />
             </div>
 
             <div>
               <label className="label">{tab === 'claim' ? 'Choose a password' : 'Password'}</label>
-              <input className="field" type="password" placeholder={tab === 'login' ? '••••••••' : ''}
-                     value={form.password} onChange={set('password')}
+              <input className="field" type="password" value={form.password} onChange={set('password')}
                      autoComplete={tab === 'login' ? 'current-password' : 'new-password'} required />
               {tab !== 'login' && (
                 <div style={{ fontSize: 12, color: 'var(--dim2)', marginTop: 6 }}>At least 8 characters.</div>

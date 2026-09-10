@@ -36,7 +36,7 @@ function Owner() {
     return (
       <main style={{ maxWidth: 900, margin: '0 auto', padding: '36px 28px 80px' }}>
         <h1 className="h1">Owner Dashboard</h1>
-        <p className="sub">This page is for team owners.</p>
+        <p className="sub">Owners only. Ask a captain if you need access.</p>
       </main>
     )
   }
@@ -64,7 +64,7 @@ function Owner() {
   return (
     <main style={{ maxWidth: 1320, margin: '0 auto', padding: '36px 28px 80px' }}>
       <h1 className="h1">Owner Dashboard</h1>
-      <p className="sub">Everyone&apos;s orders, and what still has to be placed.</p>
+      <p className="sub">Everyone&apos;s orders, and what still needs placing.</p>
 
       {passwordless.length > 0 && (
         <div style={{

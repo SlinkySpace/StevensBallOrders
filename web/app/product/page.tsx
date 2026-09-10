@@ -74,9 +74,9 @@ function Detail() {
         </a>
         <div className="empty">
           <div className="empty__icon">🎳</div>
-          <div className="empty__title">That product is not in the catalog.</div>
+          <div className="empty__title">That one is not in the catalog right now.</div>
           <div className="empty__body">
-            It may have been hidden or removed since the link was made.
+            It may have sold out, or been taken down, since the link was made.
           </div>
         </div>
       </main>
@@ -176,7 +176,7 @@ function Detail() {
               </div>
               <div>
                 <label className="label">Note (optional)</label>
-                <input className="field" value={note} placeholder="drilling, colour, anything"
+                <input className="field" value={note}
                        onChange={(e) => setNote(e.target.value)} />
               </div>
             </div>

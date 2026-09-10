@@ -80,7 +80,7 @@ function Manager() {
   return (
     <main className="wrap">
       <h1 className="h1">Catalog Manager</h1>
-      <p className="sub">Prices, stock and visibility are live for everyone on their next page load.</p>
+      <p className="sub">Price and stock changes show up for everyone on their next page load.</p>
 
       <div className="tiles">
         <Tile label="Products" value={counts ? String(counts.total) : '—'} />
