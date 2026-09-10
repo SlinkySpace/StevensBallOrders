@@ -109,6 +109,24 @@ export function ordersToCsv(orders: Order[]): string {
   return rows.join('\n')
 }
 
+export function catalogToCsv(products: Product[]): string {
+  const header = [
+    'product_url', 'sku', 'name', 'price', 'in_stock', 'is_visible',
+    'main_category', 'sub_category', 'product_type', 'scent', 'image_url',
+  ]
+  const escape = (value: unknown) => {
+    const text = String(value ?? '')
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+  }
+
+  const rows = [header.join(',')]
+  for (const product of products) {
+    rows.push(header.map((column) => escape(product[column as keyof Product])).join(','))
+  }
+  return rows.join('\n')
+}
+
+
 export function downloadCsv(filename: string, csv: string): void {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)

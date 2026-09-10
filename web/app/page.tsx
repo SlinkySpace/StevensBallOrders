@@ -202,13 +202,14 @@ function ProductCard({ product, open, onToggle, onAdd }: {
   const [note, setNote] = useState('')
   const src = imageSrc(product.image_url)
   const isBall = product.product_type === 'bowling_ball'
+  const href = `/product?ref=${encodeURIComponent(product.product_url)}`
 
   return (
     <div style={{
       position: 'relative', background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column',
     }}>
-      <div style={{ position: 'relative' }}>
+      <a href={href} style={{ position: 'relative', display: 'block' }}>
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={src} alt={product.name} loading="lazy" decoding="async" style={{
@@ -232,13 +233,14 @@ function ProductCard({ product, open, onToggle, onAdd }: {
             textTransform: 'uppercase', color: 'var(--dim)',
           }}>Ball</div>
         )}
-      </div>
+      </a>
 
-      <div title={product.name} style={{
+      <a href={href} title={product.name} style={{
         font: "600 15px/1.3 'Source Sans 3', sans-serif", letterSpacing: '-0.005em',
         margin: '12px 0 8px', height: '2.6em', overflow: 'hidden',
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-      }}>{product.name}</div>
+        color: 'var(--text)', textDecoration: 'none',
+      }}>{product.name}</a>
 
       <div style={{
         display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',

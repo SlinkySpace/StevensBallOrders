@@ -41,7 +41,10 @@ const NAV = [
   { href: '/profile', label: 'Profile' },
 ]
 
-const ADMIN_NAV = [{ href: '/owner', label: 'Owner Dashboard' }]
+const ADMIN_NAV = [
+  { href: '/owner', label: 'Owner Dashboard' },
+  { href: '/manager', label: 'Catalog Manager' },
+]
 
 export function Chrome({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, loading, cart, theme, toggleTheme, toasts } = useApp()

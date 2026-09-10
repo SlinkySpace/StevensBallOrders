@@ -138,6 +138,47 @@ export type Dashboard = {
   ball_batch_threshold: number
 }
 
+export type AdminCatalog = {
+  products: Product[]
+  main_categories: string[]
+  sub_categories: string[]
+  counts: { total: number; in_stock: number; visible: number }
+}
+
+export type ProductEdit = {
+  product_url: string
+  name?: string
+  sku?: string
+  price?: number
+  in_stock?: boolean
+  is_visible?: boolean
+  main_category?: string
+  sub_category?: string
+  product_type?: string
+  image_url?: string
+}
+
+export type ImportMode = 'add_new' | 'refresh' | 'replace'
+
+export type ImportPreview = {
+  rows: number
+  new: number
+  existing: number
+  missing: number
+  price_changes: { product_url: string; name: string; sku: string; from: number; to: number }[]
+}
+
+export type NewProduct = {
+  product_url: string
+  name: string
+  sku?: string
+  price?: number
+  main_category?: string
+  sub_category?: string
+  product_type?: string
+  image_url?: string
+}
+
 export type Freshness = {
   age: string
   age_days: number
@@ -237,4 +278,41 @@ export const api = {
 
   recheckBallBatch: () =>
     request<{ ok: true }>('/api/admin/recheck-ball-batch', { method: 'POST' }),
+
+  adminCatalog: () => request<AdminCatalog>('/api/admin/catalog'),
+
+  updateProducts: (updates: ProductEdit[]) =>
+    request<{ ok: true; updated: number }>('/api/admin/catalog/products', {
+      method: 'PATCH',
+      body: JSON.stringify({ updates }),
+    }),
+
+  setStock: (product_urls: string[], in_stock: boolean) =>
+    request<{ ok: true; updated: number }>('/api/admin/catalog/stock', {
+      method: 'POST',
+      body: JSON.stringify({ product_urls, in_stock }),
+    }),
+
+  addProduct: (product: NewProduct) =>
+    request<{ ok: true; product_url: string }>('/api/admin/catalog/products', {
+      method: 'POST',
+      body: JSON.stringify(product),
+    }),
+
+  deleteProducts: (product_urls: string[]) =>
+    request<{ ok: true; deleted: number }>('/api/admin/catalog/products/delete', {
+      method: 'POST',
+      body: JSON.stringify({ product_urls }),
+    }),
+
+  previewImport: (csv: string, mode: ImportMode) =>
+    request<ImportPreview>('/api/admin/catalog/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ csv, mode }),
+    }),
+
+  applyImport: (csv: string, mode: ImportMode) =>
+    request<{ ok: true; inserted: number; updated: number; skipped: number; deleted: number }>(
+      '/api/admin/catalog/import', { method: 'POST', body: JSON.stringify({ csv, mode }) },
+    ),
 }
