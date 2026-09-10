@@ -29,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 import auth  # noqa: E402
+import catalog_rows  # noqa: E402
 import config  # noqa: E402
 import db  # noqa: E402
 import freshness  # noqa: E402
@@ -319,24 +320,9 @@ def set_order_status(order_id: int, body: StatusChange,
 
 # --- catalog ---------------------------------------------------------------
 
-def _option_config(product_type: str) -> dict:
-    """
-    Which selector a product needs, if any.
-
-    Mirrors catalog.get_option_config, reimplemented rather than imported:
-    catalog.py pulls in pandas, and a serverless function has no reason to
-    carry it for four lines of lookup.
-    """
-    if product_type == 'bowling_ball':
-        return {'option_type': 'Weight', 'options': list(config.BALL_WEIGHTS)}
-    if product_type == 'apparel':
-        return {'option_type': 'Size', 'options': list(config.APPAREL_SIZES)}
-    return {'option_type': '', 'options': []}
-
-
 def _decorate(product) -> dict:
     row = dict(product)
-    row.update(_option_config(str(row.get('product_type') or 'general')))
+    row.update(catalog_rows.get_option_config(str(row.get('product_type') or 'general')))
     return row
 
 
@@ -462,6 +448,186 @@ def reset_password(user_id: int, _admin=Depends(require_admin),
 def recheck_ball_batch(_admin=Depends(require_admin), _writable=Depends(require_writable)):
     db.evaluate_ball_batch_notification()
     return {'ok': True}
+
+
+# --- catalog manager -------------------------------------------------------
+
+IMPORT_MODES = ('add_new', 'refresh', 'replace')
+
+
+class ProductEdit(BaseModel):
+    product_url: str
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    price: Optional[float] = None
+    in_stock: Optional[bool] = None
+    is_visible: Optional[bool] = None
+    main_category: Optional[str] = None
+    sub_category: Optional[str] = None
+    product_type: Optional[str] = None
+    image_url: Optional[str] = None
+
+
+class ProductEdits(BaseModel):
+    updates: list[ProductEdit] = Field(default_factory=list)
+
+
+class StockChange(BaseModel):
+    product_urls: list[str] = Field(default_factory=list)
+    in_stock: bool
+
+
+class NewProduct(BaseModel):
+    product_url: str
+    name: str
+    sku: str = ''
+    price: float = 0.0
+    main_category: str = 'Merchandise'
+    sub_category: str = 'Apparel'
+    product_type: str = 'general'
+    image_url: str = ''
+
+
+class ProductUrls(BaseModel):
+    product_urls: list[str] = Field(default_factory=list)
+
+
+class CatalogImport(BaseModel):
+    csv: str
+    mode: str = 'refresh'
+
+
+def _parse_catalog_csv(text: str) -> list[dict]:
+    """
+    Scraper CSV text -> rows ready for db.upsert_products().
+
+    Read with the stdlib rather than pandas: this runs in the serverless
+    function, where pandas is a bundle the deployment deliberately does not
+    carry. The rules themselves are catalog_rows', the same ones the Streamlit
+    import and sync_catalog use.
+    """
+    import csv
+    import io
+
+    reader = csv.DictReader(io.StringIO(text))
+    missing = catalog_rows.missing_csv_columns(reader.fieldnames or [])
+    if missing:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f'That file is missing required columns: {", ".join(missing)}',
+        )
+    return catalog_rows.rows_from_records(reader)
+
+
+@app.get('/api/admin/catalog')
+def admin_catalog(_admin=Depends(require_admin)):
+    """
+    Every product, including the hidden and out-of-stock ones a shopper is not
+    shown - this is the view the Catalog Manager edits.
+    """
+    rows = [_decorate(p) for p in db.get_products()]
+    return {
+        'products': rows,
+        'main_categories': sorted({r['main_category'] for r in rows if r['main_category']}),
+        'sub_categories': sorted({r['sub_category'] for r in rows if r['sub_category']}),
+        'counts': {
+            'total': len(rows),
+            'in_stock': sum(1 for r in rows if r['in_stock']),
+            'visible': sum(1 for r in rows if r['is_visible'] and r['in_stock']),
+        },
+    }
+
+
+@app.patch('/api/admin/catalog/products')
+def edit_products(body: ProductEdits, admin=Depends(require_admin),
+                  _writable=Depends(require_writable)):
+    """Apply the Products tab's edits. Only the fields sent are touched."""
+    updates = [edit.model_dump(exclude_none=True) for edit in body.updates]
+    updates = [u for u in updates if len(u) > 1]  # product_url plus something
+    if not updates:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'No changes given.')
+    applied = db.update_products(updates, updated_by=admin.get('email', ''))
+    return {'ok': True, 'updated': applied}
+
+
+@app.post('/api/admin/catalog/stock')
+def bulk_stock(body: StockChange, admin=Depends(require_admin),
+               _writable=Depends(require_writable)):
+    if not body.product_urls:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'No products given.')
+    changed = db.set_products_stock(body.product_urls, body.in_stock,
+                                    updated_by=admin.get('email', ''))
+    return {'ok': True, 'updated': changed, 'in_stock': body.in_stock}
+
+
+@app.post('/api/admin/catalog/products')
+def add_product(body: NewProduct, admin=Depends(require_admin),
+                _writable=Depends(require_writable)):
+    """
+    Add something Storm does not sell - club shirts, raffle items, one-offs.
+
+    Goes in as add_new so it can never overwrite a scraped product that happens
+    to share the URL.
+    """
+    product_url = body.product_url.strip()
+    if not product_url or not body.name.strip():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            'A name and a reference are both required.')
+    if any(p['product_url'] == product_url for p in db.get_products()):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            'That reference is already in the catalog.')
+
+    row = body.model_dump()
+    row['product_url'] = product_url
+    row['in_stock'] = True
+    row['is_visible'] = True
+    row['scent'] = ''
+    db.upsert_products([row], mode='add_new', updated_by=admin.get('email', ''))
+    return {'ok': True, 'product_url': product_url}
+
+
+@app.post('/api/admin/catalog/products/delete')
+def remove_products(body: ProductUrls, _admin=Depends(require_admin),
+                    _writable=Depends(require_writable)):
+    """
+    Delete permanently. Hiding is nearly always better, and the frontend says
+    so, but a mistyped hand-added product has to be removable.
+    """
+    if not body.product_urls:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'No products given.')
+    return {'ok': True, 'deleted': db.delete_products(body.product_urls)}
+
+
+@app.post('/api/admin/catalog/import/preview')
+def preview_import(body: CatalogImport, _admin=Depends(require_admin)):
+    """
+    What the file would do, before anyone commits to it. Writes nothing, so it
+    is deliberately not behind require_writable - reading a CSV to count rows
+    is safe even against production.
+    """
+    if body.mode not in IMPORT_MODES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Unknown import mode.')
+    rows = _parse_catalog_csv(body.csv)
+    if not rows:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            'No usable product rows in that file.')
+    return db.preview_upsert(rows, mode=body.mode)
+
+
+@app.post('/api/admin/catalog/import')
+def apply_import(body: CatalogImport, admin=Depends(require_admin),
+                 _writable=Depends(require_writable)):
+    if body.mode not in IMPORT_MODES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Unknown import mode.')
+    rows = _parse_catalog_csv(body.csv)
+    if not rows:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            'No usable product rows in that file.')
+
+    email = admin.get('email', '')
+    result = db.upsert_products(rows, mode=body.mode, updated_by=email)
+    db.record_catalog_import(body.mode, len(rows), email)
+    return {'ok': True, **result}
 
 
 @app.get('/api/health')

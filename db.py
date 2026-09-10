@@ -1116,6 +1116,52 @@ def upsert_products(rows: list[dict], mode: str = 'refresh', updated_by: str = '
     }
 
 
+def preview_upsert(rows: list[dict], mode: str = 'refresh') -> dict:
+    """
+    What upsert_products() would do with these rows, without doing it.
+
+    Runs the same normalisation and the same URL/SKU/name matching as the real
+    import, so the Catalog Manager's preview cannot promise one thing and then
+    do another - matching on URL alone recognises a fraction of what SKU
+    matching does, and a preview built on the naive comparison would call 150
+    updates "new products".
+    """
+    if mode not in {'add_new', 'refresh', 'replace'}:
+        raise ValueError(f'Unknown import mode: {mode}')
+
+    rows = [_normalize_product(row) for row in rows
+            if str(row.get('product_url') or '').strip()]
+    if mode != 'replace':
+        rows = _rekey_to_existing(rows)
+
+    stored = {row['product_url']: row for row in get_products()}
+    incoming = {row['product_url'] for row in rows}
+
+    new_rows = [row for row in rows if row['product_url'] not in stored]
+    matched = [row for row in rows if row['product_url'] in stored]
+
+    price_changes = []
+    for row in matched:
+        before = stored[row['product_url']]
+        was, now = float(before.get('price') or 0), float(row.get('price') or 0)
+        if abs(was - now) >= 0.005:
+            price_changes.append({
+                'product_url': row['product_url'],
+                'name': row.get('name') or before.get('name') or '',
+                'sku': row.get('sku') or before.get('sku') or '',
+                'from': was,
+                'to': now,
+            })
+
+    return {
+        'rows': len(rows),
+        'new': len(new_rows),
+        'existing': len(matched),
+        'missing': len([url for url in stored if url not in incoming]),
+        'price_changes': sorted(price_changes, key=lambda c: c['name'].lower()),
+    }
+
+
 def update_products(updates: list[dict], updated_by: str = '') -> int:
     """
     Apply per-product edits. Each dict needs a product_url plus any subset of

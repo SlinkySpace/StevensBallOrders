@@ -183,6 +183,101 @@ check('an unknown status is refused', r.status_code == 400, f'got {r.status_code
 r = owner.patch('/api/admin/orders/999999', json={'status': 'fulfilled'})
 check('an unknown order is 404', r.status_code == 404, f'got {r.status_code}')
 
+print('\n== catalog manager ==')
+
+CSV_HEADER = 'product_url,name,sku,price,image_url,main_category,sub_category,scent\n'
+SEED_CSV = CSV_HEADER + (
+    'https://www.stormbowling.com/products/equipment/bowling-balls/bbmvxa-alpha,'
+    'Alpha Crux,BBMVXA,$120.00,https://img/a.png,Equipment,Bowling Balls,Apple Fritter\n'
+    'https://www.stormbowling.com/products/bowling-essentials/towels/ac909pr-shammy,'
+    'Premier Shammy,AC909PR,$13.00,https://img/b.png,Bowling Essentials,Towels,none\n'
+)
+
+# Earlier tests already put a product in, so count against that rather than zero.
+BASE_PRODUCTS = db.count_products()
+
+r = good.get('/api/admin/catalog')
+check('a shopper cannot read the admin catalog', r.status_code == 403, f'got {r.status_code}')
+r = good.post('/api/admin/catalog/import', json={'csv': SEED_CSV, 'mode': 'refresh'})
+check('a shopper cannot import a catalog', r.status_code == 403, f'got {r.status_code}')
+
+r = owner.post('/api/admin/catalog/import/preview', json={'csv': SEED_CSV, 'mode': 'refresh'})
+check('the owner can preview an import', r.status_code == 200, r.text[:200])
+preview = r.json() if r.status_code == 200 else {}
+check('the preview counts both rows as new', preview.get('new') == 2, str(preview))
+check('the preview writes nothing', db.count_products() == BASE_PRODUCTS, str(db.count_products()))
+
+r = owner.post('/api/admin/catalog/import', json={'csv': SEED_CSV, 'mode': 'refresh'})
+check('the owner can apply an import', r.status_code == 200, r.text[:200])
+check('the products landed', db.count_products() == BASE_PRODUCTS + 2, str(db.count_products()))
+
+r = owner.post('/api/admin/catalog/import/preview', json={'csv': SEED_CSV, 'mode': 'refresh'})
+second = r.json() if r.status_code == 200 else {}
+check('re-previewing the same file finds nothing new', second.get('new') == 0, str(second))
+check('re-previewing recognises both as existing', second.get('existing') == 2, str(second))
+
+DEARER = SEED_CSV.replace('$120.00', '$131.00')
+r = owner.post('/api/admin/catalog/import/preview', json={'csv': DEARER, 'mode': 'refresh'})
+changes = r.json().get('price_changes', []) if r.status_code == 200 else []
+check('a price change is reported', len(changes) == 1, str(changes))
+check('the price change reads from -> to',
+      changes and changes[0]['from'] == 120.0 and changes[0]['to'] == 131.0, str(changes))
+
+r = owner.post('/api/admin/catalog/import/preview', json={'csv': SEED_CSV, 'mode': 'banana'})
+check('an unknown import mode is refused', r.status_code == 400, f'got {r.status_code}')
+r = owner.post('/api/admin/catalog/import/preview',
+               json={'csv': 'name,price\nthing,1', 'mode': 'refresh'})
+check('a file missing required columns is refused', r.status_code == 400, f'got {r.status_code}')
+
+ball = next(p for p in db.get_products() if p['sku'] == 'BBMVXA')
+r = owner.patch('/api/admin/catalog/products',
+                json={'updates': [{'product_url': ball['product_url'],
+                                   'price': 99.5, 'is_visible': False}]})
+check('the owner can edit a product', r.status_code == 200, r.text[:200])
+edited = next(p for p in db.get_products() if p['sku'] == 'BBMVXA')
+check('the price changed', float(edited['price']) == 99.5, str(edited['price']))
+check('visibility changed', not edited['is_visible'], str(edited['is_visible']))
+check('an edit leaves other fields alone', edited['name'] == 'Alpha Crux', edited['name'])
+
+r = owner.patch('/api/admin/catalog/products', json={'updates': []})
+check('an empty edit is refused', r.status_code == 400, f'got {r.status_code}')
+
+r = owner.post('/api/admin/catalog/stock',
+               json={'product_urls': [ball['product_url']], 'in_stock': False})
+check('bulk stock works', r.status_code == 200, r.text[:200])
+check('the product went out of stock',
+      not next(p for p in db.get_products() if p['sku'] == 'BBMVXA')['in_stock'])
+
+r = owner.get('/api/admin/catalog')
+body = r.json() if r.status_code == 200 else {}
+shown = body.get('products', [])
+check('the admin catalog includes the hidden product',
+      any(p['sku'] == 'BBMVXA' for p in shown), str(len(shown)))
+hidden = next((p for p in shown if p['sku'] == 'BBMVXA'), {})
+check('it comes back flagged not visible', not hidden.get('is_visible'), str(hidden.get('is_visible')))
+check('the visible count excludes it',
+      body.get('counts', {}).get('visible') == sum(
+          1 for p in shown if p['is_visible'] and p['in_stock']), str(body.get('counts')))
+r = good.get('/api/products')
+check('a shopper is not shown the hidden product',
+      all(p['sku'] != 'BBMVXA' for p in r.json()['products']), r.text[:160])
+
+r = owner.post('/api/admin/catalog/products', json={
+    'product_url': 'club-warmup-2026', 'name': 'Club warmup shirt',
+    'sku': 'CLUB-WARMUP', 'price': 30.0, 'product_type': 'apparel',
+})
+check('the owner can add a product by hand', r.status_code == 200, r.text[:200])
+check('the hand-added product is in the catalog', db.count_products() == BASE_PRODUCTS + 3, str(db.count_products()))
+r = owner.post('/api/admin/catalog/products', json={
+    'product_url': 'club-warmup-2026', 'name': 'Club warmup shirt again',
+})
+check('a duplicate reference is refused', r.status_code == 409, f'got {r.status_code}')
+
+r = owner.post('/api/admin/catalog/products/delete',
+               json={'product_urls': ['club-warmup-2026']})
+check('the owner can delete a product', r.status_code == 200, r.text[:200])
+check('it is gone', db.count_products() == BASE_PRODUCTS + 2, str(db.count_products()))
+
 print('\n== logout ==')
 r = good.post('/api/auth/logout')
 check('logout succeeds', r.status_code == 200)
