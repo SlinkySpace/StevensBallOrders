@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 import pandas as pd
-import streamlit as st
+import runtime
 
 from config import CATALOG_CSV, BALL_WEIGHTS, APPAREL_SIZES
 from db import count_products, get_products, record_catalog_import, upsert_products
@@ -218,7 +218,7 @@ def import_catalog_csv(df: pd.DataFrame, mode: str = 'refresh', updated_by: str 
     return result
 
 
-@st.cache_resource(show_spinner='Loading catalog for the first time...')
+@runtime.cache_resource(show_spinner='Loading catalog for the first time...')
 def bootstrap_catalog_from_csv() -> int:
     """
     First-run seeding: if the products table is empty and the scraper CSV is
@@ -240,7 +240,7 @@ def bootstrap_catalog_from_csv() -> int:
     return int(result.get('inserted', 0))
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@runtime.cache_data(ttl=600, show_spinner=False)
 def load_catalog(admin_view: bool = False) -> pd.DataFrame:
     """
     The catalog as a DataFrame.
