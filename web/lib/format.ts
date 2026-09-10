@@ -1,3 +1,4 @@
+import { API_BASE } from './api'
 import type { CartLine, Order, Product } from './api'
 
 export function currency(value: number | string | null | undefined): string {
@@ -17,7 +18,11 @@ export function imageSrc(stored: string | null | undefined): string | null {
   const value = String(stored ?? '').trim().split('\\').join('/')
   if (!value) return null
   if (/^(https?:|data:)/.test(value)) return value
-  if (value.startsWith('static/')) return '/' + value
+  // Stored as 'static/catalog_images/x.webp'. The API serves that directory,
+  // so the path is resolved against it rather than against this app - which is
+  // what lets the frontend deploy as its own project, with static/ nowhere
+  // inside its root.
+  if (value.startsWith('static/')) return `${API_BASE}/${value}`
   return null
 }
 

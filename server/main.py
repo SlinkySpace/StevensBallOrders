@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Response, status  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 import auth  # noqa: E402
@@ -109,6 +110,20 @@ app.add_middleware(
     allow_methods=['GET', 'POST', 'PUT', 'PATCH'],
     allow_headers=['Content-Type'],
 )
+
+
+# The catalog images, served from the same origin as the data.
+#
+# They live in static/ at the repo root, which is where the refresh workflow
+# commits them and where the scraper writes them. The frontend used to read
+# that directory off the filesystem, which only works when both halves share a
+# checkout - deployed as its own project rooted at web/, static/ is outside its
+# root and every product renders without a picture.
+#
+# Serving them here instead means the frontend needs nothing but an API URL.
+_STATIC_DIR = Path(__file__).resolve().parents[1] / 'static'
+if _STATIC_DIR.is_dir():
+    app.mount('/static', StaticFiles(directory=_STATIC_DIR), name='static')
 
 
 def _public(user) -> dict:
