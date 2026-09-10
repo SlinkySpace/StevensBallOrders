@@ -1,0 +1,14 @@
+# Vercel's FastAPI detection reads this.
+#
+# It inspects api/index.py statically and looks for a module-level assignment
+# of a FastAPI instance. That file binds `app` inside a try/except - deliberately,
+# so a deployment that cannot import server.main answers with the reason instead
+# of FUNCTION_INVOCATION_FAILED - and a static read cannot see through that:
+#
+#   Found api/index.py but it does not define a top-level "app" FastAPI instance
+#   but found potential entrypoints: server/main.py (variable: app)
+#
+# Naming the entrypoint outright is what the build log asks for, and it points at
+# the real application rather than the shim.
+[tool.vercel]
+entrypoint = "server.main:app"

@@ -1,7 +1,7 @@
 {
   "functions": {
-    "api/index.py": {
-      "includeFiles": "server/**"
+    "server/main.py": {
+      "includeFiles": "static/**"
     }
   }
 }
