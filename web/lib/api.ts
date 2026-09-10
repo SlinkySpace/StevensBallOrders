@@ -5,12 +5,18 @@
  * implementation of upsert_products, place_order_items and the rest, and this
  * side cannot drift from it on the code that deletes rows and charges people.
  *
- * `credentials: 'include'` on every call: the session is an HttpOnly cookie the
- * API sets, and cross-origin fetches drop cookies unless asked not to.
+ * Requests go to this origin by default and next.config.mjs rewrites /api and
+ * /static to the API project, so the session cookie stays first-party and Lax.
+ * Set NEXT_PUBLIC_API_BASE to bypass the proxy and call the API directly; that
+ * needs CORS_ORIGINS on the API and SameSite=None on the cookie, which Safari
+ * will not keep.
+ *
+ * `credentials: 'include'` on every call regardless: it is required for the
+ * direct case and harmless for the proxied one.
  */
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, '') || 'http://localhost:8000'
+  process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, '') ?? ''
 
 export class ApiError extends Error {
   status: number
@@ -30,7 +36,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     })
   } catch {
     throw new ApiError(
-      `Could not reach the API at ${API_BASE}. Is it running?`, 0,
+      `Could not reach the API at ${API_BASE || 'this origin'}. Is it running?`, 0,
     )
   }
 

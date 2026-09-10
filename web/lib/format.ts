@@ -19,9 +19,8 @@ export function imageSrc(stored: string | null | undefined): string | null {
   if (!value) return null
   if (/^(https?:|data:)/.test(value)) return value
   // Stored as 'static/catalog_images/x.webp'. The API serves that directory,
-  // so the path is resolved against it rather than against this app - which is
-  // what lets the frontend deploy as its own project, with static/ nowhere
-  // inside its root.
+  // and next.config.mjs rewrites /static to it - which is what lets the
+  // frontend deploy as its own project, with static/ nowhere inside its root.
   if (value.startsWith('static/')) return `${API_BASE}/${value}`
   return null
 }
