@@ -34,7 +34,12 @@ def cache_resource(**kwargs):
     def decorate(func):
         if _st is not None:
             return _st.cache_resource(**kwargs)(func)
-        return functools.lru_cache(maxsize=None)(func)
+        cached = functools.lru_cache(maxsize=None)(func)
+        # st.cache_resource spells it .clear(); lru_cache spells it
+        # .cache_clear(). Callers use the Streamlit name, so expose it here too
+        # rather than making every call site check which shim it got.
+        cached.clear = cached.cache_clear
+        return cached
     return decorate
 
 
@@ -48,6 +53,12 @@ def cache_data(**kwargs):
     def decorate(func):
         if _st is not None:
             return _st.cache_data(**kwargs)(func)
+        # Nothing is cached off-Streamlit, so there is nothing to clear - but
+        # invalidate_catalog_cache() still calls .clear() on the result, and a
+        # bare function has no such attribute. Without this the CSV import
+        # raises AttributeError anywhere Streamlit is absent, which is exactly
+        # where the write API runs.
+        func.clear = lambda: None
         return func
     return decorate
 
