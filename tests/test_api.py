@@ -278,6 +278,37 @@ r = owner.post('/api/admin/catalog/products/delete',
 check('the owner can delete a product', r.status_code == 200, r.text[:200])
 check('it is gone', db.count_products() == BASE_PRODUCTS + 2, str(db.count_products()))
 
+print('\n== health ==')
+r = fresh_client().get('/api/health')
+check('health answers signed out', r.status_code == 200, f'got {r.status_code}')
+body = r.json() if r.status_code == 200 else {}
+check('health reports the product count', isinstance(body.get('products'), int), str(body))
+check('health reports whether writes are allowed', body.get('writes_enabled') is True, str(body))
+check('health reports whether config is present',
+      'database_url_set' in body and 'session_secret_set' in body, str(body))
+
+# The endpoint has to survive the database being unreachable: a 500 here says
+# only "something broke", which is what a misconfigured deployment already
+# looks like from the outside.
+_saved_count = db.count_products
+
+
+def _explode():
+    raise RuntimeError('database is unreachable')
+
+
+db.count_products = _explode
+try:
+    r = fresh_client().get('/api/health')
+    check('health still answers when the database is down',
+          r.status_code == 200, f'got {r.status_code}')
+    broken = r.json() if r.status_code == 200 else {}
+    check('it says it is not ok', broken.get('ok') is False, str(broken))
+    check('it names the database failure',
+          'database is unreachable' in str(broken.get('database_error', '')), str(broken))
+finally:
+    db.count_products = _saved_count
+
 print('\n== logout ==')
 r = good.post('/api/auth/logout')
 check('logout succeeds', r.status_code == 200)

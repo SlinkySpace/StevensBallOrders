@@ -75,6 +75,9 @@ def require_writable() -> None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, reason)
 
 
+_startup_error: Optional[str] = None
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """
@@ -87,10 +90,22 @@ async def lifespan(_app: FastAPI):
     than one request.
 
     A blank DATABASE_URL means a local SQLite file, which genuinely has no
-    schema until something makes one, so there it still runs.
+    schema until something makes one, so there it still runs - but only where
+    something can be written. On serverless the deployment directory is
+    read-only, so a missing DATABASE_URL sends init_db() at a file it cannot
+    create, and raising here takes down every route with an opaque 500.
+
+    So the failure is recorded instead of raised, for the same reason
+    _write_block_reason() reports rather than raises: a crashed function looks
+    identical to a missing dependency, and /api/health can only say what went
+    wrong if it is still running to be asked.
     """
+    global _startup_error
     if not str(getattr(config, 'DATABASE_URL', '') or ''):
-        db.init_db()
+        try:
+            db.init_db()
+        except Exception as exc:
+            _startup_error = f'{type(exc).__name__}: {exc}'
     yield
 
 
@@ -647,12 +662,27 @@ def apply_import(body: CatalogImport, admin=Depends(require_admin),
 
 @app.get('/api/health')
 def health():
-    """Whether this deployment can read, and whether it may write."""
+    """
+    Whether this deployment can read, whether it may write, and why not.
+
+    Every field is computed defensively. A health check that raises is the one
+    thing this endpoint must never do: a 500 here says only "something broke",
+    which is exactly the position this deployment has been stuck in.
+    """
     blocked = _write_block_reason()
-    return {
+    body = {
         'ok': True,
-        'products': db.count_products(),
         'writes_enabled': blocked is None,
         'writes_blocked_because': blocked,
+        'database_url_set': bool(str(getattr(config, 'DATABASE_URL', '') or '')),
+        'session_secret_set': bool(os.environ.get('SESSION_SECRET')),
+        'startup_error': _startup_error,
         'streamlit_installed': runtime.RUNNING_UNDER_STREAMLIT,
     }
+    try:
+        body['products'] = db.count_products()
+    except Exception as exc:
+        body['ok'] = False
+        body['products'] = None
+        body['database_error'] = f'{type(exc).__name__}: {exc}'
+    return body
