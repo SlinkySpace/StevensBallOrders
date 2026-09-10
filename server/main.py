@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 import auth  # noqa: E402
 import config  # noqa: E402
 import db  # noqa: E402
+import freshness  # noqa: E402
 import runtime  # noqa: E402
 
 from server import sessions  # noqa: E402
@@ -314,6 +315,153 @@ def set_order_status(order_id: int, body: StatusChange,
         raise HTTPException(status.HTTP_404_NOT_FOUND, 'No such order.')
     db.update_order_status(order_id, body.status)
     return {'ok': True, 'order_id': order_id, 'status': body.status}
+
+
+# --- catalog ---------------------------------------------------------------
+
+def _option_config(product_type: str) -> dict:
+    """
+    Which selector a product needs, if any.
+
+    Mirrors catalog.get_option_config, reimplemented rather than imported:
+    catalog.py pulls in pandas, and a serverless function has no reason to
+    carry it for four lines of lookup.
+    """
+    if product_type == 'bowling_ball':
+        return {'option_type': 'Weight', 'options': list(config.BALL_WEIGHTS)}
+    if product_type == 'apparel':
+        return {'option_type': 'Size', 'options': list(config.APPAREL_SIZES)}
+    return {'option_type': '', 'options': []}
+
+
+def _decorate(product) -> dict:
+    row = dict(product)
+    row.update(_option_config(str(row.get('product_type') or 'general')))
+    return row
+
+
+@app.get('/api/products')
+def products(_user=Depends(require_user)):
+    """
+    The catalog a shopper sees, with each product's weight or size options
+    resolved.
+
+    Behind a session because these are the team's sponsor prices, which are not
+    the public ones and are not ours to publish.
+    """
+    rows = [_decorate(p) for p in db.get_products(visible_only=True)]
+    mains = sorted({r['main_category'] for r in rows if r['main_category']})
+    subs = sorted({r['sub_category'] for r in rows if r['sub_category']})
+    return {'products': rows, 'main_categories': mains, 'sub_categories': subs}
+
+
+@app.get('/api/catalog/freshness')
+def catalog_freshness(_user=Depends(require_user)):
+    """
+    How old the catalog is, in words.
+
+    Storm's session cookies expire within the hour, so a refresh needs somebody
+    present to run it. Nothing nags about that on its own, so the number is
+    exposed for the frontend to show.
+    """
+    signals = db.get_catalog_freshness()
+    stamp = (signals.get('last_import') or {}).get('at') or signals.get('last_product_change')
+    age_text, age_days = freshness.humanize_age(stamp) if stamp else ('never', 10**6)
+    return {**signals, 'age': age_text, 'age_days': age_days,
+            'stale': freshness.is_stale(age_days),
+            'stale_after_days': freshness.STALE_CATALOG_DAYS}
+
+
+# --- profile ---------------------------------------------------------------
+
+class SavedCard(BaseModel):
+    saved_card: str = ''
+
+
+@app.post('/api/profile/saved-card')
+def set_saved_card(body: SavedCard, user=Depends(require_user),
+                   _writable=Depends(require_writable)):
+    db.update_saved_card(int(user['id']), body.saved_card)
+    return {'ok': True}
+
+
+# --- owner dashboard -------------------------------------------------------
+
+@app.get('/api/admin/dashboard')
+def admin_dashboard(statuses: str = '', _admin=Depends(require_admin)):
+    wanted = [s for s in statuses.split(',') if s in ORDER_STATUSES] or None
+    data = db.get_owner_dashboard_data(wanted)
+    users = []
+    for row in data['users']:
+        row = dict(row)
+        # Whether an account has a password matters to the owner - those
+        # without one can be claimed by anyone who knows the address - but the
+        # hash itself never leaves the server.
+        has_password = bool(str(row.pop('password_hash', '') or '').strip())
+        users.append({**row, 'has_password': has_password})
+    return {
+        'orders': [dict(o) for o in data['orders']],
+        'users': users,
+        'pending_ball_count': data['pending_ball_count'],
+        'active_order_count': data['active_order_count'],
+        'grouped_balls': [dict(row) for row in data['grouped_balls']],
+        'statuses': list(ORDER_STATUSES),
+        'ball_batch_threshold': config.BALL_BATCH_THRESHOLD,
+    }
+
+
+class BulkStatus(BaseModel):
+    order_ids: list[int]
+    status: str
+
+
+@app.post('/api/admin/orders/bulk-status')
+def bulk_status(body: BulkStatus, _admin=Depends(require_admin),
+                _writable=Depends(require_writable)):
+    if body.status not in ORDER_STATUSES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Unknown status.')
+    if not body.order_ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'No orders given.')
+    db.update_all_orders_status(body.order_ids, body.status)
+    return {'ok': True, 'updated': len(body.order_ids), 'status': body.status}
+
+
+@app.delete('/api/admin/orders/{order_id}')
+def remove_order(order_id: int, _admin=Depends(require_admin),
+                 _writable=Depends(require_writable)):
+    if not db.get_order(order_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, 'No such order.')
+    db.delete_order(order_id)
+    return {'ok': True, 'order_id': order_id}
+
+
+class BalanceChange(BaseModel):
+    balance: float
+
+
+@app.post('/api/admin/users/{user_id}/balance')
+def set_balance(user_id: int, body: BalanceChange, _admin=Depends(require_admin),
+                _writable=Depends(require_writable)):
+    db.update_balance(user_id, body.balance)
+    return {'ok': True, 'user_id': user_id, 'balance': body.balance}
+
+
+@app.post('/api/admin/users/{user_id}/reset-password')
+def reset_password(user_id: int, _admin=Depends(require_admin),
+                   _writable=Depends(require_writable)):
+    """
+    Clear a password so the account can set a new one from "First time here?".
+
+    Orders and balance are untouched; this only blanks the hash.
+    """
+    db.clear_user_password(user_id)
+    return {'ok': True, 'user_id': user_id}
+
+
+@app.post('/api/admin/recheck-ball-batch')
+def recheck_ball_batch(_admin=Depends(require_admin), _writable=Depends(require_writable)):
+    db.evaluate_ball_batch_notification()
+    return {'ok': True}
 
 
 @app.get('/api/health')

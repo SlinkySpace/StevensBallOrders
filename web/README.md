@@ -1,62 +1,84 @@
-# web/ — read-only proof
+# web/ — the frontend
 
-The bowling order app rendered outside Streamlit, reading the **same Neon
-database**, to answer two questions before committing to a port:
+The Stevens Bowling Team Orders app, built from the Claude Design file in
+`design/`. Replaces the Streamlit UI; the backend, database and scraper are
+unchanged.
 
-1. Can every existing account still log in? — **yes, all 11, no resets**
-2. Does the query surface hold up outside Python? — **yes, 437 products and
-   every order render correctly**
-
-The Streamlit app in the parent directory is untouched and remains the one the
-team orders from. Nothing here writes.
+It talks to the Python API and nothing else. `db.py` stays the only writer, so
+`upsert_products`, `place_order_items` and the rest exist once and this side
+cannot drift from them.
 
 ## Running it
 
+Two processes. The API first:
+
+```bash
+pip install -r requirements.txt
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+```bash
+SESSION_SECRET=<that> DATABASE_URL= uvicorn server.main:app --port 8000
+```
+
+Then the frontend:
+
 ```bash
 npm --prefix web install
-npm --prefix web run dev        # http://localhost:3000
+npm --prefix web run dev
 ```
 
-Needs `web/.env.local` with `DATABASE_URL=` copied from
-`.streamlit/secrets.toml`. That file is gitignored and must stay so — it
-carries the Neon password.
+`web/.env.local` sets `NEXT_PUBLIC_API_BASE`, which is `http://localhost:8000`
+locally and the API's deployed URL in production.
 
-Both apps can run at once; they are two readers of one database.
+With `DATABASE_URL` blank the API uses a local SQLite file. Pointed at Neon it
+**refuses to write** unless `ALLOW_PRODUCTION_WRITES=1` — Streamlit is still the
+live app, and a second writer should be a deliberate act.
 
-## Checks
+## Screens
 
-```bash
-npm --prefix web run check:readonly   # fails if any write statement appears
-npm --prefix web run typecheck
-python web/scripts/password-compat-fixtures.py    # Python writes hashes
-node --experimental-strip-types web/scripts/password-compat.test.ts   # Node verifies them
-```
+| Route | What it is |
+| --- | --- |
+| `/signin` | Login, create account, and "first time here?" for accounts that predate passwords |
+| `/` | Catalog — search, category filters, 24 per page, add to cart from the card |
+| `/cart` | Quantities, weights and notes, with a sticky summary |
+| `/checkout` | The order as one table, then place it |
+| `/outstanding` | Placed but not fulfilled |
+| `/history` | Everything, any state, CSV download |
+| `/profile` | Balance, saved card, change password, log out |
+| `/owner` | Owners only: ball batch, order management, user balances |
 
-`check:readonly` greps every file for `INSERT`, `UPDATE … SET`, `DELETE`,
-`ALTER`, `DROP`, `ON CONFLICT` and friends, and fails the run if one appears.
-The read-only promise is enforced, not asserted — this app points at production.
+## Things worth knowing
 
-## What is deliberately missing
+**The cart lives on the server**, in `saved_carts`. It is mirrored in React for
+responsiveness and written back on a 500ms debounce, so typing a quantity is not
+one request per keystroke. Checkout sends only a note — the server prices the
+order from the cart it holds, so this page cannot name its own prices.
 
-- **No writes, no sessions, no cart.** Adding those is the actual port; this is
-  the evidence that the port is safe to start.
-- **No login form.** Proving people can still sign in does not require anyone to
-  type a password into an unfinished app. `/signin` reads the *shape* of each
-  stored hash instead — algorithm, iteration count, salt and digest lengths —
-  and never touches a hash, an email or a password.
+**Theme** is an explicit choice, stored per browser, applied by an inline script
+before first paint. Without that script there is a light flash on every load for
+anyone using dark mode; because the script rewrites `data-theme` before React
+hydrates, `<html>` carries `suppressHydrationWarning`.
 
-## Things a real deployment still has to solve
+**Images** are served by `app/static/[...path]/route.ts`, reading the Python
+app's `static/` directory. They are committed there by the refresh workflow, and
+copying 12MB into `web/public` would mean two sets drifting apart every scrape.
+A deployment rooted at `web/` needs "Include files outside the root directory",
+or images moved to a CDN.
 
-- **Images.** `app/static/[...path]/route.ts` reads them out of the Python app's
-  `static/` directory so 12MB is not duplicated. Vercel only uploads what is
-  inside the project root, so a deployed version needs the web app at the repo
-  root, or the refresh workflow writing images somewhere the build can see.
-- **One data layer, not two.** `sync_catalog.py` writes `products` through
-  `db.py`. If the web app grows its own TypeScript writer, `upsert_products`
-  exists twice — replace-mode carry-forward, the 10% delete bound, SKU
-  re-keying — and a divergence lands on the code that issues
-  `DELETE FROM products`. Either keep the write path in Python, or have
-  `sync_catalog.py` POST to this app instead of writing directly.
-- **Migrations.** `db.init_db()` owns the schema, including the orders → line
-  items migration. This app must never run schema management; there is exactly
-  one owner.
+## Deploying
+
+Two Vercel projects from this repo:
+
+| Project | Root Directory |
+| --- | --- |
+| API | *(blank)* |
+| Web | `web` |
+
+The API project needs `DATABASE_URL`, `SESSION_SECRET`, `COOKIE_SECURE=1`, and
+`ALLOW_PRODUCTION_WRITES=1` when it should take real orders. The web project
+needs `NEXT_PUBLIC_API_BASE` pointing at the API, and the API needs
+`CORS_ORIGINS` pointing back at the web URL.
+
+Turn **Deployment Protection off** on the API project. It 302s every request to
+`vercel.com/sso-api`, including the browser calls this app makes.

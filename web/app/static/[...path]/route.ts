@@ -1,18 +1,18 @@
 /**
  * Serves the catalog images out of the Python app's static/ directory.
  *
- * They are committed there by the refresh workflow, and copying 12MB of webp
- * into web/public would mean two sets of the same files drifting apart every
- * time the scraper runs. A Windows symlink needs developer mode, so this reads
- * them directly instead.
+ * They are committed there by the refresh workflow. Copying 12MB of webp into
+ * web/public would mean two sets of the same files drifting apart every time
+ * the scraper runs, and a Windows symlink needs developer mode - so this reads
+ * them directly.
  *
- * NOTE for a real deployment: Vercel only uploads what is inside the project
- * root, so a deployed version needs either the web app at the repo root, or
- * the refresh workflow writing images somewhere the build can see.
+ * For a deployment where the web app is its own Vercel project rooted at web/,
+ * these files sit outside that root. Either enable "Include files outside the
+ * root directory", or point image_url at a CDN.
  */
 
 import { readFile, stat } from 'node:fs/promises'
-import { join, normalize, extname, resolve } from 'node:path'
+import { extname, join, normalize, resolve } from 'node:path'
 import { NextResponse } from 'next/server'
 
 const STATIC_ROOT = resolve(process.cwd(), '..', 'static')

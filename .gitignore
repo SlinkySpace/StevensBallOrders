@@ -33,3 +33,4 @@ web/.env.local
 web/next-env.d.ts
 web/tsconfig.tsbuildinfo
 web/scripts/password-fixtures.json
+devdata.db

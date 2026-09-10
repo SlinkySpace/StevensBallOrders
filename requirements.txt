@@ -1,4 +1,13 @@
+# Installed by Streamlit Community Cloud for app.py, and by Vercel for the
+# serverless function - Vercel reads the file at the project root, so it has to
+# satisfy both. The API half is what api/requirements.txt lists; keeping them in
+# step matters, because when this file lacked fastapi the function could not
+# import itself, and could not import FastAPI to say so either.
 streamlit>=1.40
 pandas>=2.0
 psycopg[binary,pool]>=3.2
 requests>=2.32
+
+# The write API (server/, api/index.py).
+fastapi>=0.115
+pydantic>=2.9

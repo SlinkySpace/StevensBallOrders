@@ -1,18 +1,15 @@
 {
-  "name": "bowling-order-web",
-  "version": "0.1.0",
+  "name": "stevens-bowling-web",
+  "version": "1.0.0",
   "private": true,
-  "description": "Read-only proof: the bowling order app rendered outside Streamlit, against the same Neon database.",
+  "description": "Stevens Bowling Team Orders - the frontend. Talks to the Python write API; db.py stays the only writer.",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "typecheck": "tsc --noEmit",
-    "check:readonly": "node scripts/assert-read-only.mjs",
-    "test:password": "node --experimental-strip-types scripts/password-compat.test.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.10.4",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
@@ -20,6 +17,7 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
     "typescript": "^5.7.3"
   }
 }

@@ -1,0 +1,8 @@
+# The catalog pipeline: scrape, tag, fetch images, sync. Runs in GitHub
+# Actions only. Deliberately separate from requirements.txt so Vercel does
+# not ship pandas and Pillow to a function that never imports them.
+-r requirements.txt
+pandas>=2.0
+requests>=2.32
+playwright>=1.48
+Pillow>=11.0

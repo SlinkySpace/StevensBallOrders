@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Source+Sans+3:wght@400;600;700&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FFFFFF; --bg2:#F4F5F7; --card:#FFFFFF; --text:#16181D; --border:#E3E5EA;
+  --dim:rgba(22,24,29,0.58); --dim2:rgba(22,24,29,0.38);
+  --primary:#A32638; --ink:#8C2031; --accent:#0E7C86; --soft:rgba(163,38,56,0.07);
+  --lane:rgba(22,24,29,0.07);
+}
+html[data-theme="dark"]{
+  --bg:#14161A; --bg2:#1D2026; --card:#1A1D23; --text:#ECEDEF; --border:#2E323A;
+  --dim:rgba(236,237,239,0.60); --dim2:rgba(236,237,239,0.38);
+  --primary:#A32638; --ink:#F08A99; --accent:#4CC9D4; --soft:rgba(163,38,56,0.16);
+  --lane:rgba(236,237,239,0.07);
+}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+body{font-family:'Source Sans 3',system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-wrap:pretty;}
+*{box-sizing:border-box;}
+a{color:var(--ink);text-decoration:none;}
+a:hover{color:var(--primary);text-decoration:underline;}
+input,select,textarea,button{font-family:inherit;}
+select{appearance:none;-webkit-appearance:none;}
+@keyframes rollin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes toastin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:var(--bg);color:var(--text)">
+
+<sc-if value="{{ signedOut }}" hint-placeholder-val="{{ true }}">
+<div style="min-height:100vh;display:grid;grid-template-columns:1.05fr 1fr;align-items:stretch">
+  <div style="position:relative;overflow:hidden;background:var(--bg2);padding:56px 56px 48px;display:flex;flex-direction:column;justify-content:space-between;min-height:100vh">
+    <div style="position:absolute;inset:-30% -40% auto auto;width:820px;height:820px;border-radius:50%;background:radial-gradient(circle,transparent 0 33%,var(--lane) 33% 33.4%,transparent 33.4% 46%,var(--lane) 46% 46.4%,transparent 46.4% 60%,var(--lane) 60% 60.4%,transparent 60.4% 76%,var(--lane) 76% 76.4%,transparent 76.4%);pointer-events:none"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;height:38%;background:repeating-linear-gradient(90deg,var(--lane) 0 1px,transparent 1px 72px);pointer-events:none"></div>
+    <div style="position:relative;display:flex;align-items:center;gap:10px">
+      <div style="width:22px;height:22px;border-radius:50%;background:var(--primary);position:relative;flex:none">
+        <div style="position:absolute;left:6px;top:6px;width:3.5px;height:3.5px;border-radius:50%;background:rgba(0,0,0,0.55)"></div>
+        <div style="position:absolute;left:12px;top:5px;width:3.5px;height:3.5px;border-radius:50%;background:rgba(0,0,0,0.55)"></div>
+        <div style="position:absolute;left:9px;top:12px;width:3.5px;height:3.5px;border-radius:50%;background:rgba(0,0,0,0.55)"></div>
+      </div>
+      <div style="font:800 13px/1 Archivo,sans-serif;letter-spacing:0.16em;text-transform:uppercase">Stevens Bowling</div>
+    </div>
+    <div style="position:relative;max-width:520px">
+      <div style="font:600 11px/1 'Source Code Pro',monospace;letter-spacing:0.22em;text-transform:uppercase;color:var(--ink);margin-bottom:18px">Sponsor pricing · members only</div>
+      <h1 style="font:800 clamp(38px,4.4vw,62px)/0.98 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 18px">Order Storm gear<br>at team price.</h1>
+      <p style="font-size:17px;line-height:1.55;color:var(--dim);margin:0 0 28px;max-width:44ch">Browse the Storm catalog, build a cart, and the captains place it in a batch. Sign in with your Stevens email.</p>
+      <div style="display:flex;gap:28px;flex-wrap:wrap">
+        <div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">437</div><div style="font:600 11px/1.4 'Source Sans 3',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--dim2);margin-top:6px">Products</div></div>
+        <div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">4</div><div style="font:600 11px/1.4 'Source Sans 3',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--dim2);margin-top:6px">Balls per batch</div></div>
+        <div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">18</div><div style="font:600 11px/1.4 'Source Sans 3',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--dim2);margin-top:6px">On the roster</div></div>
+      </div>
+    </div>
+    <div style="position:relative;font-size:13px;color:var(--dim2)">Storm equipment is ordered through the team's sponsor account.</div>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:center;padding:48px 40px;background:var(--bg)">
+    <div style="width:100%;max-width:400px">
+      <div style="display:flex;gap:4px;padding:4px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:26px">
+        <button onClick="{{ tabLogin }}" style="{{ tabLoginStyle }}">Login</button>
+        <button onClick="{{ tabSignup }}" style="{{ tabSignupStyle }}">Create account</button>
+        <button onClick="{{ tabClaim }}" style="{{ tabClaimStyle }}">First time?</button>
+      </div>
+
+      <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+      <div>
+        <h2 style="font:700 24px/1.2 Archivo,sans-serif;letter-spacing:-0.02em;margin:0 0 6px">Welcome back</h2>
+        <p style="font-size:14px;color:var(--dim);margin:0 0 24px">Email and password, same as always.</p>
+        <div style="display:grid;gap:16px">
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Email</label>
+            <input type="email" placeholder="you@stevens.edu" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Password</label>
+            <input type="password" placeholder="••••••••" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <button onClick="{{ doLogin }}" style="background:var(--primary);color:#fff;border:0;border-radius:8px;padding:13px 18px;font:700 15px/1 'Source Sans 3',sans-serif;cursor:pointer;margin-top:4px" style-hover="background:var(--ink)">Login</button>
+        </div>
+        <div style="margin-top:20px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);font-size:13px;line-height:1.5;color:var(--dim)">Account made before passwords existed? Open <strong style="color:var(--text)">First time?</strong> to set one — orders and balance stay put.</div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isSignup }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <h2 style="font:700 24px/1.2 Archivo,sans-serif;letter-spacing:-0.02em;margin:0 0 6px">Create account</h2>
+        <p style="font-size:14px;color:var(--dim);margin:0 0 24px">You'll need the team access code from a captain.</p>
+        <div style="display:grid;gap:16px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">First name</label>
+              <input style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+            </div>
+            <div>
+              <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Last name</label>
+              <input style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+            </div>
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Email address</label>
+            <input type="email" placeholder="you@stevens.edu" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Password</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+            <div style="font-size:12px;color:var(--dim2);margin-top:6px">At least 8 characters.</div>
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Confirm password</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Team access code</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <button onClick="{{ doLogin }}" style="background:var(--primary);color:#fff;border:0;border-radius:8px;padding:13px 18px;font:700 15px/1 'Source Sans 3',sans-serif;cursor:pointer;margin-top:4px" style-hover="background:var(--ink)">Create account</button>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ isClaim }}" hint-placeholder-val="{{ false }}">
+      <div>
+        <h2 style="font:700 24px/1.2 Archivo,sans-serif;letter-spacing:-0.02em;margin:0 0 6px">First time here?</h2>
+        <p style="font-size:14px;line-height:1.55;color:var(--dim);margin:0 0 24px">If your account was created before passwords were added, set your password here. Your orders and balance stay exactly as they are.</p>
+        <div style="display:grid;gap:16px">
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Email</label>
+            <input type="email" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Choose a password</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+            <div style="font-size:12px;color:var(--dim2);margin-top:6px">At least 8 characters.</div>
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Confirm password</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Team access code</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <button onClick="{{ doLogin }}" style="background:var(--primary);color:#fff;border:0;border-radius:8px;padding:13px 18px;font:700 15px/1 'Source Sans 3',sans-serif;cursor:pointer;margin-top:4px" style-hover="background:var(--ink)">Set password and log in</button>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ signedIn }}" hint-placeholder-val="{{ false }}">
+<div>
+  <header style="position:sticky;top:0;z-index:40;background:var(--bg);border-bottom:1px solid var(--border)">
+    <div style="max-width:1320px;margin:0 auto;padding:0 28px;display:flex;align-items:center;gap:20px;height:60px">
+      <div onClick="{{ goCatalog }}" style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:none">
+        <div style="width:22px;height:22px;border-radius:50%;background:var(--primary);position:relative;flex:none">
+          <div style="position:absolute;left:6px;top:6px;width:3.5px;height:3.5px;border-radius:50%;background:rgba(0,0,0,0.55)"></div>
+          <div style="position:absolute;left:12px;top:5px;width:3.5px;height:3.5px;border-radius:50%;background:rgba(0,0,0,0.55)"></div>
+          <div style="position:absolute;left:9px;top:12px;width:3.5px;height:3.5px;border-radius:50%;background:rgba(0,0,0,0.55)"></div>
+        </div>
+        <div style="font:800 13px/1 Archivo,sans-serif;letter-spacing:0.14em;text-transform:uppercase;white-space:nowrap">Stevens Bowling</div>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:9px;flex:none">
+        <sc-if value="{{ hasBalance }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ goProfile }}" style="display:flex;align-items:baseline;gap:7px;padding:7px 12px;border-radius:999px;background:var(--soft);border:1px solid rgba(163,38,56,0.28);cursor:pointer;white-space:nowrap">
+            <span style="font:600 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink)">You owe</span>
+            <span style="font:700 14px/1 'Source Sans 3',sans-serif;font-variant-numeric:tabular-nums;color:var(--ink)">{{ balanceLabel }}</span>
+          </div>
+        </sc-if>
+        <button onClick="{{ toggleTheme }}" title="Toggle light or dark" style="height:36px;flex:none;padding:0 13px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid var(--border);border-radius:9px;color:var(--dim);cursor:pointer;white-space:nowrap;font:600 13px/1 'Source Sans 3',sans-serif">{{ themeIcon }}</button>
+        <button onClick="{{ goCart }}" style="display:flex;align-items:center;gap:8px;flex:none;background:var(--text);color:var(--bg);border:0;border-radius:9px;padding:0 14px;height:36px;font:700 13px/1 'Source Sans 3',sans-serif;cursor:pointer;white-space:nowrap">
+          <span style="font-size:14px">🛒</span><span>{{ cartCountLabel }}</span>
+        </button>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--border)">
+      <nav style="max-width:1320px;margin:0 auto;padding:6px 20px;display:flex;align-items:center;gap:2px;overflow-x:auto">
+        <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="5">
+          <button onClick="{{ item.go }}" style="{{ item.style }}">{{ item.label }}</button>
+        </sc-for>
+      </nav>
+    </div>
+    <div style="height:3px;background:var(--primary);opacity:0.9"></div>
+  </header>
+
+  <sc-if value="{{ isCatalog }}" hint-placeholder-val="{{ true }}">
+  <main style="max-width:1320px;margin:0 auto;padding:36px 28px 80px">
+    <div style="position:relative;overflow:hidden;border:1px solid var(--border);border-radius:16px;background:var(--bg2);padding:28px 32px;margin-bottom:28px">
+      <div style="position:absolute;inset:-120% -20% auto auto;width:640px;height:640px;border-radius:50%;background:radial-gradient(circle,transparent 0 46%,var(--lane) 46% 46.5%,transparent 46.5% 63%,var(--lane) 63% 63.5%,transparent 63.5% 82%,var(--lane) 82% 82.5%,transparent 82.5%);pointer-events:none"></div>
+      <div style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+        <div>
+          <div style="font:600 11px/1 'Source Code Pro',monospace;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink);margin-bottom:12px">Storm catalog</div>
+          <h1 style="font:800 clamp(30px,3.4vw,44px)/1 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 8px">Catalog</h1>
+          <p style="font-size:15px;color:var(--dim);margin:0">Storm equipment at team sponsor pricing.</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <sc-for list="{{ quickCats }}" as="q" hint-placeholder-count="4">
+            <button onClick="{{ q.go }}" style="{{ q.style }}">{{ q.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:14px">
+      <input value="{{ search }}" onInput="{{ onSearch }}" placeholder="Search by product name or SKU" style="width:100%;padding:11px 14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:9px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+      <div style="position:relative">
+        <select value="{{ mainCat }}" onChange="{{ onMainCat }}" style="width:100%;padding:11px 32px 11px 14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:9px;font:400 14px/1.4 'Source Sans 3',sans-serif;cursor:pointer">
+          <sc-for list="{{ mainOptions }}" as="opt" hint-placeholder-count="3"><option value="{{ opt }}">{{ opt }}</option></sc-for>
+        </select>
+        <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--dim2);font-size:10px">▼</span>
+      </div>
+      <div style="position:relative">
+        <select value="{{ subCat }}" onChange="{{ onSubCat }}" style="width:100%;padding:11px 32px 11px 14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:9px;font:400 14px/1.4 'Source Sans 3',sans-serif;cursor:pointer">
+          <sc-for list="{{ subOptions }}" as="opt" hint-placeholder-count="3"><option value="{{ opt }}">{{ opt }}</option></sc-for>
+        </select>
+        <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--dim2);font-size:10px">▼</span>
+      </div>
+    </div>
+    <div style="font-size:13px;color:var(--dim2);margin-bottom:20px">{{ showingLabel }}</div>
+
+    <sc-if value="{{ noMatches }}" hint-placeholder-val="{{ false }}">
+      <div style="text-align:center;padding:64px 24px;border:1px dashed var(--border);border-radius:14px;background:var(--bg2)">
+        <div style="font-size:30px;margin-bottom:10px">🎳</div>
+        <div style="font:700 17px/1.3 Archivo,sans-serif;margin-bottom:6px">No products match those filters.</div>
+        <div style="font-size:14px;color:var(--dim)">Try a different category or clear the search.</div>
+      </div>
+    </sc-if>
+
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px">
+      <sc-for list="{{ pageProducts }}" as="p" hint-placeholder-count="8">
+        <div style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column" style-hover="border-color:var(--dim2)">
+          <div onClick="{{ p.open }}" style="cursor:pointer;position:relative">
+            <img src="{{ p.img }}" alt="{{ p.name }}" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1/1;object-fit:contain;border-radius:10px;padding:6px;background:rgba(128,128,128,0.05);border:1px solid rgba(128,128,128,0.12)" />
+            <sc-if value="{{ p.isBall }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;left:8px;top:8px;padding:4px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font:600 9px/1 'Source Sans 3',sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)">Ball</div>
+            </sc-if>
+          </div>
+          <div onClick="{{ p.open }}" title="{{ p.name }}" style="cursor:pointer;font:600 15px/1.3 'Source Sans 3',sans-serif;letter-spacing:-0.005em;margin:12px 0 8px;height:2.6em;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">{{ p.name }}</div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:12px">
+            <span style="font:700 21px/1 Archivo,sans-serif;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{{ p.priceLabel }}</span>
+            <span title="{{ p.sku }}" style="font:400 11px/1 'Source Code Pro',monospace;letter-spacing:0.04em;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%">{{ p.sku }}</span>
+          </div>
+          <button onClick="{{ p.togglePop }}" style="margin-top:auto;width:100%;padding:10px;border-radius:8px;border:1px solid rgba(163,38,56,0.28);background:var(--soft);color:var(--ink);font:700 13px/1 'Source Sans 3',sans-serif;cursor:pointer" style-hover="border-color:var(--primary);background:rgba(163,38,56,0.13)">Add to cart</button>
+
+          <sc-if value="{{ p.popOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:8px;right:8px;bottom:8px;z-index:20;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 44px rgba(0,0,0,0.22);padding:14px;animation:rollin 0.14s ease-out">
+              <div style="font:600 14px/1.3 'Source Sans 3',sans-serif;margin-bottom:3px">{{ p.name }}</div>
+              <div style="font-size:12px;color:var(--dim);margin-bottom:12px">{{ p.popMeta }}</div>
+              <sc-if value="{{ p.hasOptions }}" hint-placeholder-val="{{ true }}">
+                <div style="margin-bottom:10px">
+                  <label style="display:block;font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:5px">{{ p.optionType }}</label>
+                  <select value="{{ p.optionValue }}" onChange="{{ p.setOption }}" style="width:100%;padding:8px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;font:400 13px/1.3 'Source Sans 3',sans-serif;cursor:pointer">
+                    <sc-for list="{{ p.options }}" as="o" hint-placeholder-count="5"><option value="{{ o }}">{{ o }}</option></sc-for>
+                  </select>
+                </div>
+              </sc-if>
+              <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-bottom:10px">
+                <div>
+                  <label style="display:block;font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:5px">Qty</label>
+                  <input type="number" min="1" max="20" value="{{ p.qty }}" onChange="{{ p.setQty }}" style="width:100%;padding:8px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;font:400 13px/1.3 'Source Sans 3',sans-serif" />
+                </div>
+                <div>
+                  <label style="display:block;font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:5px">Note</label>
+                  <input value="{{ p.note }}" onInput="{{ p.setNote }}" placeholder="optional" style="width:100%;padding:8px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;font:400 13px/1.3 'Source Sans 3',sans-serif" />
+                </div>
+              </div>
+              <a href="{{ p.url }}" target="_blank" rel="noreferrer" style="display:block;font-size:12px;margin-bottom:12px">View on stormbowling.com ↗</a>
+              <div style="display:flex;gap:8px">
+                <button onClick="{{ p.add }}" style="flex:1;padding:10px;border:0;border-radius:8px;background:var(--primary);color:#fff;font:700 13px/1 'Source Sans 3',sans-serif;cursor:pointer">Add to cart</button>
+                <button onClick="{{ p.togglePop }}" style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--dim);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer">Cancel</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <sc-if value="{{ manyPages }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:32px;padding-top:24px;border-top:1px solid var(--border)">
+        <button onClick="{{ prevPage }}" style="{{ prevStyle }}">← Previous</button>
+        <div style="font-size:13px;color:var(--dim)">{{ pageLabel }}</div>
+        <button onClick="{{ nextPage }}" style="{{ nextStyle }}">Next →</button>
+      </div>
+    </sc-if>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isProduct }}" hint-placeholder-val="{{ false }}">
+  <main style="max-width:1320px;margin:0 auto;padding:28px 28px 80px">
+    <button onClick="{{ goCatalog }}" style="background:transparent;border:0;color:var(--dim);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer;padding:8px 0;margin-bottom:20px">← Back to catalog</button>
+    <div style="display:grid;grid-template-columns:1.05fr 1fr;gap:48px;align-items:start">
+      <div style="position:relative;overflow:hidden;background:var(--bg2);border:1px solid var(--border);border-radius:18px;padding:40px">
+        <div style="position:absolute;inset:auto auto -45% -25%;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,transparent 0 52%,var(--lane) 52% 52.6%,transparent 52.6% 70%,var(--lane) 70% 70.6%,transparent 70.6%);pointer-events:none"></div>
+        <sc-if value="{{ detail.hasImg }}" hint-placeholder-val="{{ false }}">
+          <img src="{{ detail.img }}" alt="{{ detail.name }}" style="position:relative;width:100%;aspect-ratio:1/1;object-fit:contain" />
+        </sc-if>
+      </div>
+      <div>
+        <div style="font:600 11px/1 'Source Code Pro',monospace;letter-spacing:0.2em;text-transform:uppercase;color:var(--ink);margin-bottom:14px">{{ detail.crumb }}</div>
+        <h1 style="font:800 clamp(28px,3vw,40px)/1.05 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 16px">{{ detail.name }}</h1>
+        <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px">
+          <div style="font:800 34px/1 Archivo,sans-serif;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{{ detail.priceLabel }}</div>
+          <div style="font:400 12px/1 'Source Code Pro',monospace;letter-spacing:0.06em;color:var(--dim2)">SKU {{ detail.sku }}</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px">
+          <div style="padding:7px 12px;border-radius:999px;background:rgba(72,187,120,0.13);border:1px solid rgba(72,187,120,0.36);font:700 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.08em;text-transform:uppercase;white-space:nowrap;flex:none;color:{{ detail.stockColor }}">In stock</div>
+          <sc-if value="{{ detail.hasScent }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:7px 12px;border-radius:999px;background:var(--bg2);border:1px solid var(--border);font:600 11px/1 'Source Sans 3',sans-serif;color:var(--dim);white-space:nowrap;flex:none">Scent · {{ detail.scent }}</div>
+          </sc-if>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px">
+          <sc-if value="{{ detail.hasOptions }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-bottom:16px">
+              <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">{{ detail.optionType }}</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <sc-for list="{{ detail.optionChips }}" as="o" hint-placeholder-count="5">
+                  <button onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <div style="display:grid;grid-template-columns:120px 1fr;gap:12px;margin-bottom:16px">
+            <div>
+              <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Quantity</label>
+              <input type="number" min="1" max="20" value="{{ detail.qty }}" onChange="{{ detail.setQty }}" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+            </div>
+            <div>
+              <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Note (optional)</label>
+              <input value="{{ detail.note }}" onInput="{{ detail.setNote }}" placeholder="drilling, colour, anything" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+            </div>
+          </div>
+          <button onClick="{{ detail.add }}" style="width:100%;padding:14px;border:0;border-radius:9px;background:var(--primary);color:#fff;font:700 15px/1 'Source Sans 3',sans-serif;cursor:pointer" style-hover="background:var(--ink)">Add to cart · {{ detail.lineLabel }}</button>
+        </div>
+        <a href="{{ detail.url }}" target="_blank" rel="noreferrer" style="display:inline-block;margin-top:18px;font-size:13px">View on stormbowling.com ↗</a>
+      </div>
+    </div>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isCart }}" hint-placeholder-val="{{ false }}">
+  <main style="max-width:1320px;margin:0 auto;padding:36px 28px 80px">
+    <h1 style="font:800 clamp(28px,3vw,38px)/1 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 6px">Cart</h1>
+    <p style="font-size:15px;color:var(--dim);margin:0 0 28px">Adjust quantities and options before checking out.</p>
+
+    <sc-if value="{{ cartEmpty }}" hint-placeholder-val="{{ true }}">
+      <div style="text-align:center;padding:72px 24px;border:1px dashed var(--border);border-radius:14px;background:var(--bg2)">
+        <div style="font-size:32px;margin-bottom:12px">🛒</div>
+        <div style="font:700 18px/1.3 Archivo,sans-serif;margin-bottom:6px">Your cart is empty</div>
+        <div style="font-size:14px;color:var(--dim);margin-bottom:22px">Add something from the Catalog and it will show up here.</div>
+        <button onClick="{{ goCatalog }}" style="padding:11px 20px;border:0;border-radius:8px;background:var(--primary);color:#fff;font:700 14px/1 'Source Sans 3',sans-serif;cursor:pointer">Browse the catalog</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ cartHasItems }}" hint-placeholder-val="{{ false }}">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:28px;align-items:start">
+      <div style="display:grid;gap:14px">
+        <sc-for list="{{ cartLines }}" as="c" hint-placeholder-count="2">
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;display:grid;grid-template-columns:104px minmax(0,1fr);gap:18px">
+            <sc-if value="{{ c.hasImg }}" hint-placeholder-val="{{ false }}">
+              <img src="{{ c.img }}" alt="{{ c.name }}" style="width:104px;height:104px;object-fit:contain;border-radius:10px;background:rgba(128,128,128,0.05);border:1px solid rgba(128,128,128,0.12);padding:6px" />
+            </sc-if>
+            <div style="min-width:0">
+              <div style="font:600 17px/1.25 'Source Sans 3',sans-serif;letter-spacing:-0.01em;margin-bottom:5px">{{ c.name }}</div>
+              <div style="font-size:13px;color:var(--dim);margin-bottom:14px">{{ c.meta }}</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                <div style="width:88px">
+                  <label style="display:block;font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:5px">Qty</label>
+                  <input type="number" min="1" max="20" value="{{ c.qty }}" onChange="{{ c.setQty }}" style="width:100%;padding:9px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;font:400 13px/1.3 'Source Sans 3',sans-serif" />
+                </div>
+                <sc-if value="{{ c.hasOptions }}" hint-placeholder-val="{{ true }}">
+                  <div style="width:120px">
+                    <label style="display:block;font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:5px">{{ c.optionType }}</label>
+                    <select value="{{ c.optionValue }}" onChange="{{ c.setOption }}" style="width:100%;padding:9px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;font:400 13px/1.3 'Source Sans 3',sans-serif;cursor:pointer">
+                      <sc-for list="{{ c.options }}" as="o" hint-placeholder-count="5"><option value="{{ o }}">{{ o }}</option></sc-for>
+                    </select>
+                  </div>
+                </sc-if>
+                <div style="flex:1;min-width:150px">
+                  <label style="display:block;font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:5px">Item note</label>
+                  <input value="{{ c.note }}" onInput="{{ c.setNote }}" style="width:100%;padding:9px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;font:400 13px/1.3 'Source Sans 3',sans-serif" />
+                </div>
+                <button onClick="{{ c.remove }}" style="padding:9px 12px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--dim);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer;white-space:nowrap;align-self:flex-end" style-hover="color:var(--ink);border-color:var(--ink)">Remove item</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--dim)">
+                <span>Line total</span>
+                <span style="font:700 18px/1 Archivo,sans-serif;color:var(--text);font-variant-numeric:tabular-nums">{{ c.lineTotal }}</span>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="position:sticky;top:130px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px">
+        <div style="font:700 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim);margin-bottom:18px">Summary</div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;color:var(--dim);margin-bottom:10px"><span>Items</span><span style="color:var(--text);font-weight:600;font-variant-numeric:tabular-nums">{{ cartUnits }}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;color:var(--dim);margin-bottom:18px"><span>Lines</span><span style="color:var(--text);font-weight:600;font-variant-numeric:tabular-nums">{{ cartLineCount }}</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:16px;border-top:1px solid var(--border);margin-bottom:20px">
+          <span style="font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--dim)">Cart total</span>
+          <span style="font:800 26px/1 Archivo,sans-serif;color:var(--ink);font-variant-numeric:tabular-nums">{{ cartTotalLabel }}</span>
+        </div>
+        <button onClick="{{ goCheckout }}" style="width:100%;padding:13px;border:0;border-radius:9px;background:var(--primary);color:#fff;font:700 15px/1 'Source Sans 3',sans-serif;cursor:pointer;margin-bottom:10px" style-hover="background:var(--ink)">Checkout →</button>
+        <button onClick="{{ emptyCart }}" style="width:100%;padding:11px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--dim);font:600 14px/1 'Source Sans 3',sans-serif;cursor:pointer">Empty cart</button>
+      </div>
+    </div>
+    </sc-if>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isCheckout }}" hint-placeholder-val="{{ false }}">
+  <main style="max-width:1000px;margin:0 auto;padding:36px 28px 80px">
+    <h1 style="font:800 clamp(28px,3vw,38px)/1 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 6px">Checkout</h1>
+    <p style="font-size:15px;color:var(--dim);margin:0 0 28px">One order, containing everything below.</p>
+
+    <sc-if value="{{ cartEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="text-align:center;padding:72px 24px;border:1px dashed var(--border);border-radius:14px;background:var(--bg2)">
+        <div style="font-size:32px;margin-bottom:12px">✅</div>
+        <div style="font:700 18px/1.3 Archivo,sans-serif;margin-bottom:6px">Nothing to check out</div>
+        <div style="font-size:14px;color:var(--dim)">Add items to your cart first.</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ cartHasItems }}" hint-placeholder-val="{{ true }}">
+    <div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:minmax(0,2.4fr) 1fr 1fr 56px 90px 100px;gap:12px;padding:13px 20px;background:var(--bg2);border-bottom:1px solid var(--border);font:600 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim)">
+          <div>Product</div><div>SKU</div><div>Option</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit price</div><div style="text-align:right">Line total</div>
+        </div>
+        <sc-for list="{{ cartLines }}" as="c" hint-placeholder-count="2">
+          <div style="display:grid;grid-template-columns:minmax(0,2.4fr) 1fr 1fr 56px 90px 100px;gap:12px;padding:15px 20px;border-bottom:1px solid var(--border);font-size:14px;align-items:center">
+            <div style="font-weight:600;min-width:0">{{ c.name }}</div>
+            <div style="font:400 12px/1.3 'Source Code Pro',monospace;color:var(--dim);overflow:hidden;text-overflow:ellipsis">{{ c.sku }}</div>
+            <div style="color:var(--dim);font-size:13px">{{ c.optionLabel }}</div>
+            <div style="text-align:right;font-variant-numeric:tabular-nums">{{ c.qty }}</div>
+            <div style="text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)">{{ c.unitLabel }}</div>
+            <div style="text-align:right;font-weight:700;font-variant-numeric:tabular-nums">{{ c.lineTotal }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-wrap:wrap;gap:36px;padding:18px 22px;margin-bottom:22px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)">
+        <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Lines</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ cartLineCount }}</div></div>
+        <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Items</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ cartUnits }}</div></div>
+        <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Estimated total</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:var(--ink)">{{ cartTotalLabel }}</div></div>
+      </div>
+
+      <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Checkout note (optional)</label>
+      <textarea value="{{ checkoutNote }}" onInput="{{ onCheckoutNote }}" rows="3" placeholder="Anything the captains should know about this order" style="width:100%;padding:12px 14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:9px;font:400 14px/1.5 'Source Sans 3',sans-serif;resize:vertical;margin-bottom:22px"></textarea>
+      <button onClick="{{ placeOrder }}" style="padding:14px 26px;border:0;border-radius:9px;background:var(--primary);color:#fff;font:700 15px/1 'Source Sans 3',sans-serif;cursor:pointer" style-hover="background:var(--ink)">Confirm and place order</button>
+    </div>
+    </sc-if>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isOutstanding }}" hint-placeholder-val="{{ false }}">
+  <main style="max-width:1100px;margin:0 auto;padding:36px 28px 80px">
+    <h1 style="font:800 clamp(28px,3vw,38px)/1 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 6px">Outstanding Orders</h1>
+    <p style="font-size:15px;color:var(--dim);margin:0 0 26px">Placed but not yet fulfilled.</p>
+    <sc-if value="{{ noOutstanding }}" hint-placeholder-val="{{ false }}">
+      <div style="text-align:center;padding:72px 24px;border:1px dashed var(--border);border-radius:14px;background:var(--bg2)">
+        <div style="font-size:32px;margin-bottom:12px">📦</div>
+        <div style="font:700 18px/1.3 Archivo,sans-serif;margin-bottom:6px">Nothing outstanding</div>
+        <div style="font-size:14px;color:var(--dim)">Orders you place will show here until they are fulfilled.</div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ hasOutstanding }}" hint-placeholder-val="{{ true }}">
+    <div>
+      <div style="display:flex;flex-wrap:wrap;gap:36px;padding:18px 22px;margin-bottom:18px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)">
+        <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Active orders</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ outCount }}</div></div>
+        <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Items</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ outItems }}</div></div>
+        <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Value</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:var(--ink)">{{ outValue }}</div></div>
+      </div>
+      <div style="display:grid;gap:12px">
+        <sc-for list="{{ outstandingOrders }}" as="o" hint-placeholder-count="2">
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:13px;padding:18px 20px">
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px">
+              <span style="font:700 16px/1 Archivo,sans-serif;letter-spacing:-0.01em">Order #{{ o.id }}</span>
+              <span style="{{ o.pillStyle }}">{{ o.status }}</span>
+              <span style="font:700 17px/1 Archivo,sans-serif;margin-left:auto;font-variant-numeric:tabular-nums">{{ o.totalLabel }}</span>
+            </div>
+            <div style="font-size:13px;color:var(--dim);margin-top:6px">{{ o.metaLine }}</div>
+            <sc-if value="{{ o.hasNote }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:13px;color:var(--dim);margin-top:6px;font-style:italic">Note: {{ o.note }}</div>
+            </sc-if>
+            <button onClick="{{ o.toggle }}" style="margin-top:14px;background:transparent;border:1px solid var(--border);border-radius:7px;padding:7px 12px;color:var(--dim);font:600 12px/1 'Source Sans 3',sans-serif;cursor:pointer;white-space:nowrap">{{ o.toggleLabel }}</button>
+            <sc-if value="{{ o.expanded }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+                <div style="display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 80px 48px 80px 90px;gap:10px;padding:10px 14px;background:var(--bg2);font:600 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.09em;text-transform:uppercase;color:var(--dim)">
+                  <div>Product</div><div>SKU</div><div>Option</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit</div><div style="text-align:right">Line total</div>
+                </div>
+                <sc-for list="{{ o.items }}" as="it" hint-placeholder-count="2">
+                  <div style="display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 80px 48px 80px 90px;gap:10px;padding:11px 14px;border-top:1px solid var(--border);font-size:13px;align-items:center">
+                    <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.name }}</div>
+                    <div style="font:400 11px/1.3 'Source Code Pro',monospace;color:var(--dim);overflow:hidden;text-overflow:ellipsis">{{ it.sku }}</div>
+                    <div style="color:var(--dim)">{{ it.option }}</div>
+                    <div style="text-align:right;font-variant-numeric:tabular-nums">{{ it.qty }}</div>
+                    <div style="text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)">{{ it.unit }}</div>
+                    <div style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums">{{ it.total }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isHistory }}" hint-placeholder-val="{{ false }}">
+  <main style="max-width:1100px;margin:0 auto;padding:36px 28px 80px">
+    <h1 style="font:800 clamp(28px,3vw,38px)/1 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 6px">Order History</h1>
+    <p style="font-size:15px;color:var(--dim);margin:0 0 26px">Every order you have placed, in any state.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:36px;padding:18px 22px;margin-bottom:18px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)">
+      <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Orders</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ histCount }}</div></div>
+      <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Items</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ histItems }}</div></div>
+      <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Total ordered</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:var(--ink)">{{ histValue }}</div></div>
+    </div>
+    <div style="display:grid;gap:12px">
+      <sc-for list="{{ allOrders }}" as="o" hint-placeholder-count="3">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:13px;padding:18px 20px">
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px">
+            <span style="font:700 16px/1 Archivo,sans-serif;letter-spacing:-0.01em">Order #{{ o.id }}</span>
+            <span style="{{ o.pillStyle }}">{{ o.status }}</span>
+            <span style="font:700 17px/1 Archivo,sans-serif;margin-left:auto;font-variant-numeric:tabular-nums">{{ o.totalLabel }}</span>
+          </div>
+          <div style="font-size:13px;color:var(--dim);margin-top:6px">{{ o.metaLine }}</div>
+          <sc-if value="{{ o.hasNote }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;color:var(--dim);margin-top:6px;font-style:italic">Note: {{ o.note }}</div>
+          </sc-if>
+          <button onClick="{{ o.toggle }}" style="margin-top:14px;background:transparent;border:1px solid var(--border);border-radius:7px;padding:7px 12px;color:var(--dim);font:600 12px/1 'Source Sans 3',sans-serif;cursor:pointer;white-space:nowrap">{{ o.toggleLabel }}</button>
+          <sc-if value="{{ o.expanded }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+              <div style="display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 80px 48px 80px 90px;gap:10px;padding:10px 14px;background:var(--bg2);font:600 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.09em;text-transform:uppercase;color:var(--dim)">
+                <div>Product</div><div>SKU</div><div>Option</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit</div><div style="text-align:right">Line total</div>
+              </div>
+              <sc-for list="{{ o.items }}" as="it" hint-placeholder-count="2">
+                <div style="display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 80px 48px 80px 90px;gap:10px;padding:11px 14px;border-top:1px solid var(--border);font-size:13px;align-items:center">
+                  <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.name }}</div>
+                  <div style="font:400 11px/1.3 'Source Code Pro',monospace;color:var(--dim);overflow:hidden;text-overflow:ellipsis">{{ it.sku }}</div>
+                  <div style="color:var(--dim)">{{ it.option }}</div>
+                  <div style="text-align:right;font-variant-numeric:tabular-nums">{{ it.qty }}</div>
+                  <div style="text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)">{{ it.unit }}</div>
+                  <div style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums">{{ it.total }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <button onClick="{{ downloadCsv }}" style="margin-top:22px;padding:11px 18px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font:600 14px/1 'Source Sans 3',sans-serif;cursor:pointer">Download my orders (CSV)</button>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isProfile }}" hint-placeholder-val="{{ false }}">
+  <main style="max-width:900px;margin:0 auto;padding:36px 28px 80px">
+    <div style="display:flex;align-items:center;gap:18px;margin-bottom:28px">
+      <div style="width:60px;height:60px;border-radius:50%;background:var(--soft);border:1px solid rgba(163,38,56,0.28);display:flex;align-items:center;justify-content:center;font:800 20px/1 Archivo,sans-serif;color:var(--ink);flex:none">{{ user.initials }}</div>
+      <div>
+        <h1 style="font:800 clamp(26px,2.6vw,34px)/1 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 6px">{{ user.name }}</h1>
+        <div style="font-size:14px;color:var(--dim)">{{ user.email }}</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:36px;padding:18px 22px;margin-bottom:24px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)">
+      <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Outstanding orders</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ outCount }}</div></div>
+      <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Fulfilled orders</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ fulfilledCount }}</div></div>
+      <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Balance owed</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:var(--ink)">{{ balanceLabel }}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px">
+        <div style="font:700 15px/1 Archivo,sans-serif;margin-bottom:16px">Payment</div>
+        <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Saved card placeholder</label>
+        <input value="{{ savedCard }}" onInput="{{ onSavedCard }}" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif;margin-bottom:14px" />
+        <button onClick="{{ saveCard }}" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font:600 14px/1 'Source Sans 3',sans-serif;cursor:pointer">Update saved card placeholder</button>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px">
+        <div style="font:700 15px/1 Archivo,sans-serif;margin-bottom:16px">Change password</div>
+        <div style="display:grid;gap:12px">
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Current password</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">New password</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+            <div style="font-size:12px;color:var(--dim2);margin-top:6px">At least 8 characters.</div>
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:6px">Confirm new password</label>
+            <input type="password" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <button onClick="{{ updatePassword }}" style="padding:11px 16px;border:0;border-radius:8px;background:var(--primary);color:#fff;font:700 14px/1 'Source Sans 3',sans-serif;cursor:pointer;margin-top:2px">Update password</button>
+        </div>
+      </div>
+    </div>
+    <button onClick="{{ logout }}" style="margin-top:24px;padding:11px 18px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--dim);font:600 14px/1 'Source Sans 3',sans-serif;cursor:pointer">Log out</button>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isOwner }}" hint-placeholder-val="{{ false }}">
+  <main style="max-width:1320px;margin:0 auto;padding:36px 28px 80px">
+    <h1 style="font:800 clamp(28px,3vw,38px)/1 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 6px">Owner Dashboard</h1>
+    <p style="font-size:15px;color:var(--dim);margin:0 0 24px">Everyone's orders, and what still has to be placed.</p>
+
+    <div style="display:flex;gap:12px;padding:14px 18px;border:1px solid rgba(214,158,46,0.4);background:rgba(214,158,46,0.11);border-radius:12px;margin-bottom:22px;font-size:14px;line-height:1.55">
+      <span style="font-size:16px">⚠️</span>
+      <div><strong>2 account(s) have not set a password yet.</strong> They need the team access code to do so.</div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:36px;padding:18px 22px;margin-bottom:24px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)">
+      <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Pending bowling balls</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">{{ pendingBalls }}</div></div>
+      <div><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Pending orders</div><div style="font:800 24px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:var(--ink)">{{ pendingOrders }}</div></div>
+      <div style="flex:1;min-width:220px;display:flex;align-items:center;justify-content:flex-end">
+        <div style="font-size:13px;color:var(--dim);text-align:right;max-width:34ch">Owners are emailed once 4 balls are waiting in submitted or approved.</div>
+      </div>
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px">
+      <div style="font:700 15px/1 Archivo,sans-serif;margin-bottom:6px">Pending bowling ball summary</div>
+      <div style="font-size:13px;color:var(--dim);margin-bottom:16px">Grouped by ball and weight — this is the list to place with Storm.</div>
+      <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+        <div style="display:grid;grid-template-columns:minmax(0,2fr) 1fr 90px 90px;gap:10px;padding:10px 14px;background:var(--bg2);font:600 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.09em;text-transform:uppercase;color:var(--dim)">
+          <div>Product</div><div>SKU</div><div style="text-align:right">Weight</div><div style="text-align:right">Qty</div>
+        </div>
+        <sc-for list="{{ groupedBalls }}" as="g" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:minmax(0,2fr) 1fr 90px 90px;gap:10px;padding:11px 14px;border-top:1px solid var(--border);font-size:13px;align-items:center">
+            <div>{{ g.name }}</div>
+            <div style="font:400 11px/1.3 'Source Code Pro',monospace;color:var(--dim)">{{ g.sku }}</div>
+            <div style="text-align:right">{{ g.weight }}</div>
+            <div style="text-align:right;font-weight:700;font-variant-numeric:tabular-nums">{{ g.qty }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px">
+      <div style="font:700 15px/1 Archivo,sans-serif;margin-bottom:14px">Order management</div>
+      <div style="display:grid;grid-template-columns:minmax(0,2fr) 1fr;gap:16px;align-items:end;margin-bottom:16px">
+        <div>
+          <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Show orders with these statuses</label>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ statusFilters }}" as="s" hint-placeholder-count="5">
+              <button onClick="{{ s.toggle }}" style="{{ s.style }}">{{ s.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Bulk update filtered orders to</label>
+          <div style="display:flex;gap:8px">
+            <select value="{{ bulkStatus }}" onChange="{{ onBulkStatus }}" style="flex:1;padding:10px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.3 'Source Sans 3',sans-serif;cursor:pointer">
+              <sc-for list="{{ statusOptions }}" as="s" hint-placeholder-count="5"><option value="{{ s }}">{{ s }}</option></sc-for>
+            </select>
+            <button onClick="{{ applyBulk }}" style="padding:10px 14px;border:0;border-radius:8px;background:var(--primary);color:#fff;font:700 13px/1 'Source Sans 3',sans-serif;cursor:pointer;white-space:nowrap">Apply to all shown</button>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:13px;color:var(--dim2);margin-bottom:14px">{{ ownerShownLabel }}</div>
+
+      <div style="display:grid;gap:12px">
+        <sc-for list="{{ ownerOrders }}" as="o" hint-placeholder-count="3">
+          <div style="border:1px solid var(--border);border-radius:12px;padding:16px 18px;background:var(--bg)">
+            <div style="display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:20px;align-items:start">
+              <div style="min-width:0">
+                <div style="display:flex;align-items:center;flex-wrap:wrap;gap:9px 13px">
+                  <span style="font:700 15px/1 Archivo,sans-serif">Order #{{ o.id }}</span>
+                  <span style="{{ o.pillStyle }}">{{ o.status }}</span>
+                  <span style="font:600 13px/1.3 'Source Sans 3',sans-serif;color:var(--dim)">{{ o.customer }}</span>
+                  <span style="font:700 16px/1 Archivo,sans-serif;margin-left:auto;font-variant-numeric:tabular-nums">{{ o.totalLabel }}</span>
+                </div>
+                <div style="font-size:13px;color:var(--dim);margin-top:6px">{{ o.metaLine }}</div>
+                <sc-if value="{{ o.hasNote }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px;color:var(--dim);margin-top:5px;font-style:italic">Note: {{ o.note }}</div>
+                </sc-if>
+                <div style="margin-top:12px;border:1px solid var(--border);border-radius:10px;overflow-x:auto">
+                  <div style="display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 80px 48px 80px 90px;gap:10px;padding:9px 13px;background:var(--bg2);font:600 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.09em;text-transform:uppercase;color:var(--dim);min-width:600px">
+                    <div>Product</div><div>SKU</div><div>Option</div><div style="text-align:right">Qty</div><div style="text-align:right">Unit</div><div style="text-align:right">Line total</div>
+                  </div>
+                  <sc-for list="{{ o.items }}" as="it" hint-placeholder-count="2">
+                    <div style="display:grid;grid-template-columns:minmax(0,2.2fr) 1fr 80px 48px 80px 90px;gap:10px;padding:10px 13px;border-top:1px solid var(--border);font-size:13px;align-items:center;min-width:600px">
+                      <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.name }}</div>
+                      <div style="font:400 11px/1.3 'Source Code Pro',monospace;color:var(--dim);overflow:hidden;text-overflow:ellipsis">{{ it.sku }}</div>
+                      <div style="color:var(--dim)">{{ it.option }}</div>
+                      <div style="text-align:right;font-variant-numeric:tabular-nums">{{ it.qty }}</div>
+                      <div style="text-align:right;font-variant-numeric:tabular-nums;color:var(--dim)">{{ it.unit }}</div>
+                      <div style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums">{{ it.total }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:grid;gap:8px">
+                <label style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.05em;text-transform:uppercase;color:var(--dim)">Update status</label>
+                <select value="{{ o.statusSel }}" onChange="{{ o.setStatus }}" style="width:100%;padding:9px 10px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:7px;font:400 13px/1.3 'Source Sans 3',sans-serif;cursor:pointer">
+                  <sc-for list="{{ statusOptions }}" as="s" hint-placeholder-count="5"><option value="{{ s }}">{{ s }}</option></sc-for>
+                </select>
+                <button onClick="{{ o.apply }}" style="width:100%;padding:9px;border:0;border-radius:7px;background:var(--text);color:var(--bg);font:700 13px/1 'Source Sans 3',sans-serif;cursor:pointer">Apply status</button>
+                <button onClick="{{ o.del }}" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--dim);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer" style-hover="color:var(--ink);border-color:var(--ink)">Delete order</button>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <button onClick="{{ exportOrders }}" style="margin-top:16px;padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer">Export shown orders to CSV</button>
+    </div>
+
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px">
+      <div style="font:700 15px/1 Archivo,sans-serif;margin-bottom:6px">User balances</div>
+      <div style="font-size:13px;color:var(--dim);margin-bottom:16px;max-width:76ch">Reset password clears the account's password so the owner can set a new one from the "First time here?" tab. Orders and balance are untouched.</div>
+      <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+        <sc-for list="{{ teamUsers }}" as="u" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.4fr) 104px 68px 122px;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);align-items:center">
+            <div style="font-weight:600;font-size:14px">{{ u.name }}</div>
+            <div style="font-size:13px;color:var(--dim);overflow:hidden;text-overflow:ellipsis">{{ u.emailLabel }}</div>
+            <input type="number" step="1" value="{{ u.balance }}" onChange="{{ u.setBalance }}" style="width:100%;padding:8px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:7px;font:400 13px/1.3 'Source Sans 3',sans-serif;font-variant-numeric:tabular-nums" />
+            <button onClick="{{ u.save }}" style="padding:8px;border:0;border-radius:7px;background:var(--text);color:var(--bg);font:700 12px/1 'Source Sans 3',sans-serif;cursor:pointer">Save</button>
+            <button onClick="{{ u.reset }}" style="{{ u.resetStyle }}">Reset password</button>
+          </div>
+        </sc-for>
+      </div>
+      <button onClick="{{ recheckBatch }}" style="margin-top:16px;padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer">Re-check bowling ball batch notification</button>
+    </div>
+  </main>
+  </sc-if>
+
+  <sc-if value="{{ isManager }}" hint-placeholder-val="{{ false }}">
+  <main style="max-width:1320px;margin:0 auto;padding:36px 28px 80px">
+    <h1 style="font:800 clamp(28px,3vw,38px)/1 Archivo,sans-serif;letter-spacing:-0.03em;margin:0 0 6px">Catalog Manager</h1>
+    <p style="font-size:15px;color:var(--dim);margin:0 0 24px">Prices, stock and visibility are live for everyone on their next page load.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px"><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:9px">Products</div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">437</div></div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px"><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:9px">In stock</div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">411</div></div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px"><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:9px">Visible to shoppers</div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">428</div></div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px"><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:9px">Last edited</div><div style="font:800 26px/1 Archivo,sans-serif">yesterday</div></div>
+    </div>
+    <div style="font-size:13px;color:var(--dim);margin-bottom:22px">Catalog last imported <strong style="color:var(--text)">6 days ago</strong> by jela@stevens.edu (437 products, refresh mode).</div>
+
+    <div style="display:flex;gap:4px;padding:4px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:22px;max-width:100%;overflow-x:auto">
+      <button onClick="{{ cmTabProducts }}" style="{{ cmTabProductsStyle }}">Products</button>
+      <button onClick="{{ cmTabImport }}" style="{{ cmTabImportStyle }}">Import from scraper CSV</button>
+      <button onClick="{{ cmTabAdd }}" style="{{ cmTabAddStyle }}">Add / remove</button>
+    </div>
+
+    <sc-if value="{{ cmIsProducts }}" hint-placeholder-val="{{ true }}">
+    <div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:12px">
+        <input value="{{ cmSearch }}" onInput="{{ onCmSearch }}" placeholder="Filter by name or SKU" style="width:100%;padding:11px 14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:9px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+        <select value="{{ cmCategory }}" onChange="{{ onCmCategory }}" style="width:100%;padding:11px 14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:9px;font:400 14px/1.3 'Source Sans 3',sans-serif;cursor:pointer">
+          <sc-for list="{{ subOptions }}" as="o" hint-placeholder-count="3"><option value="{{ o }}">{{ o }}</option></sc-for>
+        </select>
+        <select value="{{ cmStock }}" onChange="{{ onCmStock }}" style="width:100%;padding:11px 14px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:9px;font:400 14px/1.3 'Source Sans 3',sans-serif;cursor:pointer">
+          <sc-for list="{{ cmStockOptions }}" as="o" hint-placeholder-count="3"><option value="{{ o }}">{{ o }}</option></sc-for>
+        </select>
+      </div>
+      <div style="font-size:13px;color:var(--dim);margin-bottom:14px">{{ cmCountLabel }} Edit cells directly, then press "Save changes". Un-ticking <strong style="color:var(--text)">In stock</strong> hides a product from shoppers immediately.</div>
+
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;overflow-x:auto">
+        <div style="display:grid;grid-template-columns:48px minmax(220px,2.2fr) 110px 96px 78px 74px 130px 140px 110px 96px;gap:10px;padding:11px 16px;background:var(--bg2);border-bottom:1px solid var(--border);font:600 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--dim);align-items:center;min-width:1120px">
+          <div></div><div>Product</div><div>SKU</div><div style="text-align:right">Price</div><div style="text-align:center">In stock</div><div style="text-align:center">Visible</div><div>Main category</div><div>Sub category</div><div>Type</div><div>Last edited</div>
+        </div>
+        <sc-for list="{{ cmRows }}" as="r" hint-placeholder-count="6">
+          <div style="display:grid;grid-template-columns:48px minmax(220px,2.2fr) 110px 96px 78px 74px 130px 140px 110px 96px;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:13px;min-width:1120px">
+            <sc-if value="{{ r.hasImg }}" hint-placeholder-val="{{ false }}">
+              <img src="{{ r.img }}" alt="" style="width:34px;height:34px;object-fit:contain;border-radius:6px;background:rgba(128,128,128,0.06)" />
+            </sc-if>
+            <div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">{{ r.name }}</div>
+            <div style="font:400 11px/1.3 'Source Code Pro',monospace;color:var(--dim);overflow:hidden;text-overflow:ellipsis">{{ r.sku }}</div>
+            <input value="{{ r.price }}" onChange="{{ r.setPrice }}" style="width:100%;padding:6px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;font:400 13px/1.2 'Source Sans 3',sans-serif;text-align:right;font-variant-numeric:tabular-nums" />
+            <div style="text-align:center"><input type="checkbox" checked="{{ r.inStock }}" onChange="{{ r.setStock }}" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer" /></div>
+            <div style="text-align:center"><input type="checkbox" checked="{{ r.visible }}" onChange="{{ r.setVisible }}" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer" /></div>
+            <div style="color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.main }}</div>
+            <div style="color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.sub }}</div>
+            <div style="font:400 11px/1.3 'Source Code Pro',monospace;color:var(--dim)">{{ r.type }}</div>
+            <div style="color:var(--dim2);font-size:12px">{{ r.updated }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap">
+        <button onClick="{{ cmSave }}" style="{{ cmSaveStyle }}">Save changes</button>
+        <div style="font-size:13px;color:var(--dim)">{{ cmEditLabel }}</div>
+      </div>
+
+      <div style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border)">
+        <div style="font:700 15px/1 Archivo,sans-serif;margin-bottom:6px">Bulk stock update</div>
+        <div style="font-size:13px;color:var(--dim);margin-bottom:14px">Applies to every product currently shown by the filters above.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button onClick="{{ bulkIn }}" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer">{{ bulkInLabel }}</button>
+          <button onClick="{{ bulkOut }}" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer">{{ bulkOutLabel }}</button>
+          <button onClick="{{ downloadCatalog }}" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer">Download catalog CSV</button>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ cmIsImport }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:820px">
+      <div style="font-size:14px;line-height:1.6;color:var(--dim);margin-bottom:20px">Re-run <code style="font-family:'Source Code Pro',monospace;font-size:13px;color:var(--text)">storm_scraper.py</code> then <code style="font-family:'Source Code Pro',monospace;font-size:13px;color:var(--text)">label_cleaning.py</code> when Storm changes their line-up, and upload the resulting CSV here. No commit, no redeploy.</div>
+      <div style="border:1px dashed var(--border);border-radius:14px;background:var(--bg2);padding:34px;text-align:center;margin-bottom:22px">
+        <div style="font-size:26px;margin-bottom:10px">📄</div>
+        <div style="font:700 15px/1.3 Archivo,sans-serif;margin-bottom:5px">storm_products_tagged.csv</div>
+        <div style="font-size:13px;color:var(--dim);margin-bottom:16px">437 usable product rows · uploaded just now</div>
+        <button onClick="{{ noop }}" style="padding:10px 16px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font:600 13px/1 'Source Sans 3',sans-serif;cursor:pointer">Choose a different file</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:20px">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px"><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:9px">New products</div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">6</div></div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px"><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:9px">Already in catalog</div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">431</div></div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px"><div style="font:600 11px/1 'Source Sans 3',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:var(--dim);margin-bottom:9px">In catalog but not in file</div><div style="font:800 26px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums">2</div></div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:22px">
+        <button onClick="{{ togglePriceDiff }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:transparent;border:0;color:var(--text);font:600 14px/1 'Source Sans 3',sans-serif;cursor:pointer;text-align:left">
+          <span>3 price change(s) in this file</span><span style="color:var(--dim2);font-size:11px">{{ priceDiffCaret }}</span>
+        </button>
+        <sc-if value="{{ priceDiffOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="border-top:1px solid var(--border)">
+            <div style="display:grid;grid-template-columns:minmax(0,2fr) 120px 120px;gap:10px;padding:10px 18px;background:var(--bg2);font:600 10px/1 'Source Sans 3',sans-serif;letter-spacing:0.09em;text-transform:uppercase;color:var(--dim)">
+              <div>Product</div><div style="text-align:right">Current price</div><div style="text-align:right">New price</div>
+            </div>
+            <sc-for list="{{ priceChanges }}" as="p" hint-placeholder-count="3">
+              <div style="display:grid;grid-template-columns:minmax(0,2fr) 120px 120px;gap:10px;padding:11px 18px;border-top:1px solid var(--border);font-size:13px">
+                <div style="font-weight:600">{{ p.name }}</div>
+                <div style="text-align:right;color:var(--dim);font-variant-numeric:tabular-nums">{{ p.from }}</div>
+                <div style="text-align:right;font-weight:700;font-variant-numeric:tabular-nums">{{ p.to }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+      <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:10px">How should this file be applied?</label>
+      <div style="display:grid;gap:9px;margin-bottom:18px">
+        <sc-for list="{{ importModes }}" as="m" hint-placeholder-count="3">
+          <button onClick="{{ m.pick }}" style="{{ m.style }}">
+            <span style="{{ m.dotStyle }}"></span>
+            <span>{{ m.label }}</span>
+          </button>
+        </sc-for>
+      </div>
+      <sc-if value="{{ replaceWarning }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:12px;padding:14px 18px;border:1px solid rgba(214,158,46,0.4);background:rgba(214,158,46,0.11);border-radius:12px;margin-bottom:18px;font-size:14px;line-height:1.55">
+          <span style="font-size:16px">⚠️</span>
+          <div>Replace deletes every product row first, including any you added by hand and any hidden/out-of-stock flags you set. Past orders are not affected.</div>
+        </div>
+      </sc-if>
+      <button onClick="{{ applyImport }}" style="padding:13px 22px;border:0;border-radius:9px;background:var(--primary);color:#fff;font:700 15px/1 'Source Sans 3',sans-serif;cursor:pointer">Apply import</button>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ cmIsAdd }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:820px">
+      <div style="font-size:14px;color:var(--dim);margin-bottom:20px">For anything not in the Storm catalog — club shirts, raffle items, one-offs.</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:28px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Product name</label>
+            <input style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Main category</label>
+            <input value="Merchandise" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">SKU</label>
+            <input style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Sub category</label>
+            <input value="Apparel" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Price</label>
+            <input type="number" value="0" step="1" style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          </div>
+          <div>
+            <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Type</label>
+            <select style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.3 'Source Sans 3',sans-serif;cursor:pointer">
+              <option>general</option><option>bowling_ball</option><option>apparel</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Image URL (optional)</label>
+          <input style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+        </div>
+        <div style="margin-bottom:18px">
+          <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:7px">Reference / product URL</label>
+          <input style="width:100%;padding:11px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;font:400 14px/1.4 'Source Sans 3',sans-serif" />
+          <div style="font-size:12px;color:var(--dim2);margin-top:6px">Any unique string. Used as the product key, so make it unique.</div>
+        </div>
+        <button onClick="{{ addProduct }}" style="padding:12px 20px;border:0;border-radius:8px;background:var(--primary);color:#fff;font:700 14px/1 'Source Sans 3',sans-serif;cursor:pointer">Add product</button>
+      </div>
+      <div style="font:700 15px/1 Archivo,sans-serif;margin-bottom:6px">Remove products</div>
+      <div style="font-size:13px;color:var(--dim);margin-bottom:14px">Hiding is usually better than deleting — untick "Visible" in the Products tab.</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <label style="display:block;font:600 12px/1 'Source Sans 3',sans-serif;letter-spacing:0.04em;text-transform:uppercase;color:var(--dim);margin-bottom:10px">Products to delete permanently</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <sc-for list="{{ deleteChips }}" as="d" hint-placeholder-count="3">
+            <button onClick="{{ d.toggle }}" style="{{ d.style }}">{{ d.label }}</button>
+          </sc-for>
+        </div>
+        <button onClick="{{ deleteProducts }}" style="{{ deleteBtnStyle }}">{{ deleteBtnLabel }}</button>
+      </div>
+    </div>
+    </sc-if>
+  </main>
+  </sc-if>
+
+  <footer style="border-top:1px solid var(--border);background:var(--bg2)">
+    <div style="max-width:1320px;margin:0 auto;padding:26px 28px;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;font-size:13px;color:var(--dim2)">
+      <div>Stevens Bowling · team ordering at sponsor prices</div>
+      <div>Storm equipment is ordered through the team's sponsor account.</div>
+    </div>
+  </footer>
+</div>
+</sc-if>
+
+<sc-if value="{{ toastShown }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:10px;padding:13px 20px;border-radius:999px;background:var(--text);color:var(--bg);font:600 14px/1 'Source Sans 3',sans-serif;box-shadow:0 14px 40px rgba(0,0,0,0.28);animation:toastin 0.18s ease-out">
+    <span style="font-size:15px">🎳</span><span>{{ toast }}</span>
+  </div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:940}}">
+const BALL_WEIGHTS = ['12 lb','13 lb','14 lb','15 lb','16 lb'];
+const APPAREL_SIZES = ['XS','S','M','L','XL','XXL','3XL'];
+const STATUSES = ['submitted','approved','ordered','fulfilled','cancelled'];
+const PILL = {
+  submitted:['#D69E2E','rgba(214,158,46,0.13)','rgba(214,158,46,0.35)'],
+  approved:['#4299E1','rgba(66,153,225,0.13)','rgba(66,153,225,0.35)'],
+  ordered:['#805AD5','rgba(128,90,213,0.13)','rgba(128,90,213,0.35)'],
+  fulfilled:['#48BB78','rgba(72,187,120,0.14)','rgba(72,187,120,0.36)'],
+  cancelled:['#E53E3E','rgba(197,48,48,0.11)','rgba(197,48,48,0.30)'],
+};
+const IMG = 'static/catalog_images/';
+const P = (name,sku,price,img,url,main,sub,type,scent) => ({name,sku,price,img:IMG+img,url,main,sub,type,scent:scent||''});
+const PRODUCTS = [
+  P('Alpha Crux','BBMVXA',120,'bbmvxa_feb31435.webp','https://www.stormbowling.com/storm-alpha-crux-bowling-ball','Equipment','Bowling Balls','bowling_ball','Apple Fritter'),
+  P('Equinox Hybrid','BBMVXY',120,'bbmvxy_52ce420f.webp','https://www.stormbowling.com/storm-equinox-hybrid-bowling-ball','Equipment','Bowling Balls','bowling_ball'),
+  P('Equinox Solid','BBMVXD',120,'bbmvxd_2017a463.webp','https://www.stormbowling.com/storm-equinox-solid-bowling-ball','Equipment','Bowling Balls','bowling_ball','Cherry Apple Slush'),
+  P('Ion Max Pearl','BBMVIM',120,'bbmvim_cf95d0dd.webp','https://www.stormbowling.com/storm-ion-max-pearl-bowling-ball','Equipment','Bowling Balls','bowling_ball','Pineapple Cherry Delight'),
+  P('Ion Max','BBMVIO',120,'bbmvio_aba00fd1.webp','https://www.stormbowling.com/storm-ion-max-bowling-ball','Equipment','Bowling Balls','bowling_ball'),
+  P('Ion Pro Solid','BBMVIS',120,'bbmvis_503bf9b9.webp','https://www.stormbowling.com/storm-ion-pro-solid-bowling-ball','Equipment','Bowling Balls','bowling_ball'),
+  P('Next Factor','BBMVXF',120,'bbmvxf_21fb2c5f.webp','https://www.stormbowling.com/storm-next-factor-bowling-ball','Equipment','Bowling Balls','bowling_ball','Dark Berry'),
+  P('Concept','BBMVCN',120,'bbmvcn_416ec77e.webp','https://www.stormbowling.com/storm-concept-bowling-ball','Equipment','Bowling Balls','bowling_ball','Blueberry Fritter'),
+  P('Bionic','BBMVBI',110,'bbmvbi_0e4ec815.webp','https://www.stormbowling.com/storm-bionic-bowling-ball','Equipment','Bowling Balls','bowling_ball','Cherry Cobbler'),
+  P('!Q Tour Sapphire','BBMVQH',110,'bbmvqh_07c08e42.webp','https://www.stormbowling.com/storm-iq-tour-sapphire-bowling-ball','Equipment','Bowling Balls','bowling_ball'),
+  P('!Q Tour Edition','BBMTQT',110,'bbmtqt_5dbd14f7.webp','https://www.stormbowling.com/storm-iq-tour-edition-bowling-ball','Equipment','Bowling Balls','bowling_ball'),
+  P('!Q Tour 78/U','BBMVLL',110,'bbmvll_a212f063.webp','https://www.stormbowling.com/storm-iq-tour-78u-bowling-ball','Equipment','Bowling Balls','bowling_ball'),
+  P('Phaze II Pearl','BBMVZP',110,'bbmvzp_a1d4b8fa.webp','https://www.stormbowling.com/storm-phaze-ii-pearl-bowling-ball','Equipment','Bowling Balls','bowling_ball','Frosted Cinnamon Roll'),
+  P('Phaze II','BBMTZA',110,'bbmtza_89c0f059.webp','https://www.stormbowling.com/storm-phaze-ii-bowling-ball','Equipment','Bowling Balls','bowling_ball'),
+  P('6-BALL ROLLING THUNDER (STEEL BLUE-BLACK)','67139',344,'67139_31f5132e.webp','https://www.stormbowling.com/storm-rolling-thunder-6-ball-roller-bag-steel-blue-black','Equipment','Bowling Bags','general'),
+  P('6-BALL ROLLING THUNDER (ABSTRACT PURPLE-BLACK)','67138',344,'67138_07e8ee23.webp','https://www.stormbowling.com/storm-rolling-thunder-6-ball-roller-bag-abstract-purple','Equipment','Bowling Bags','general'),
+  P('4-BALL ROLLING THUNDER (STEEL BLUE-BLACK)','47139',257,'47139_a2de4a33.webp','https://www.stormbowling.com/storm-rolling-thunder-4-ball-roller-bag-blue-black','Equipment','Bowling Bags','general'),
+  P('4-BALL ROLLING THUNDER (ABSTRACT PURPLE-BLACK)','47138',257,'47138_69fb852b.webp','https://www.stormbowling.com/storm-rolling-thunder-4-ball-roller-bag-abstract-purple','Equipment','Bowling Bags','general'),
+  P('3G DIAL RACER','S3029',170,'s3029_76539911.webp','https://www.stormbowling.com/3G-dial-racer-shoe-black','Equipment','Shoes','general'),
+  P('3G RACER WHITE/HOLO','S3025',165,'s3025_0348ea28.webp','https://www.stormbowling.com/3G-racer-shoe-white','Equipment','Shoes','general'),
+  P('3G RACER MESH','S3031',130,'s3031_fdfdded3.webp','https://www.stormbowling.com/3G-racer-mesh-shoe-gray','Equipment','Shoes','general'),
+  P('Storm Alpha Crux Bowling Hooded Tee','SHST292',33,'shst292_c64888f5.webp','https://www.stormbowling.com/storm-alpha-crux-bowling-hooded-tee','Merchandise','Apparel','apparel'),
+  P('Storm Bowling Fleece Hoodie (Glacier Blue)','SHST275',42.9,'shst275_3117416c.webp','https://www.stormbowling.com/storm-fleece-hoodie-glacier-blue','Merchandise','Apparel','apparel'),
+  P('Storm Bowling Fleece Hoodie (Black, 1985 Nightwave)','SHST276',42.9,'shst276_b2cfae85.webp','https://www.stormbowling.com/storm-fleece-hoodie-black-1985','Merchandise','Apparel','apparel'),
+  P('STORM OVAL BOLT SHAMMY','AC901OBBLUE',10.75,'ac901obblue_a08984a6.webp','https://www.stormbowling.com/storm-deluxe-shammy-oval-bolt-blue','Bowling Essentials','Towels','general'),
+  P('STORM PREMIER SHAMMY','AC909PR',13,'ac909pr_401d1bb2.webp','https://www.stormbowling.com/storm-premier-shammy','Bowling Essentials','Towels','general'),
+  P('REACTA CLEAN','REACTA_CLEAN',7,'reacta_clean_7684b7b8.webp','https://www.stormbowling.com/storm-reacta-clean-ball-cleaner','Bowling Essentials','Cleaners Polishes','general'),
+  P('REACTA FOAM','REACTA_FOAM',5.78,'reacta_foam_43f9e269.webp','https://www.stormbowling.com/storm-reacta-foam','Bowling Essentials','Cleaners Polishes','general'),
+  P('STORM CLOUD GRIP SACK','AC991',4.4,'ac991_06aea898.webp','https://www.stormbowling.com/storm-grip-sack-cloud','Bowling Essentials','Grip Aids','general'),
+  P('STORM SCENTED GRIP BAG RED','AC985',5.25,'ac985_187856c7.webp','https://www.stormbowling.com/storm-scented-grip-bag-red','Bowling Essentials','Grip Aids','general'),
+  P('Storm Cardinal Red Snapback Hat','AC574RD',26.4,'ac574rd_8ff9e1da.webp','https://www.stormbowling.com/storm-hat-cardinal-red','Merchandise','Accessories','general'),
+  P('Storm Script Black Snapback Hat','AC574BK',26.4,'ac574bk_57eb51c1.webp','https://www.stormbowling.com/storm-script-hat-black','Merchandise','Accessories','general'),
+];
+const money = v => '$' + Number(v || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+const optionConfig = t => t === 'bowling_ball' ? {optionType:'Weight', options:BALL_WEIGHTS}
+  : t === 'apparel' ? {optionType:'Size', options:APPAREL_SIZES} : {optionType:'', options:[]};
+const defaultOption = t => t === 'bowling_ball' ? '15 lb' : (t === 'apparel' ? 'L' : '');
+const find = sku => PRODUCTS.find(p => p.sku === sku);
+
+const ORDERS = [
+  {id:412, status:'approved', timestamp:'2026-09-06 18:42', note:'For the Kean tri-match', items:[
+    {sku:'BBMVXA', option:'15 lb', qty:1, note:'pin up, 4in layout'},
+    {sku:'AC909PR', option:'', qty:2, note:''}]},
+  {id:408, status:'submitted', timestamp:'2026-09-04 21:07', note:'', items:[
+    {sku:'BBMVZP', option:'15 lb', qty:1, note:''}]},
+  {id:396, status:'ordered', timestamp:'2026-08-28 12:15', note:'', items:[
+    {sku:'SHST275', option:'L', qty:1, note:''},
+    {sku:'AC574RD', option:'', qty:1, note:''},
+    {sku:'REACTA_CLEAN', option:'', qty:2, note:'one for the bag'}]},
+  {id:371, status:'fulfilled', timestamp:'2026-08-11 19:30', note:'', items:[
+    {sku:'S3025', option:'', qty:1, note:'size 10.5'}]},
+  {id:352, status:'cancelled', timestamp:'2026-07-29 16:02', note:'Ordered the wrong weight', items:[
+    {sku:'BBMTZA', option:'14 lb', qty:1, note:''}]},
+];
+const OWNER_ORDERS = [
+  {id:412, customer:'Nate Ellis · nellis@stevens.edu', status:'approved', timestamp:'2026-09-06 18:42', note:'For the Kean tri-match', items:[{sku:'BBMVXA',option:'15 lb',qty:1,note:'pin up, 4in layout'},{sku:'AC909PR',option:'',qty:2,note:''}]},
+  {id:411, customer:'Priya Raman · praman@stevens.edu', status:'submitted', timestamp:'2026-09-06 15:11', note:'', items:[{sku:'BBMVIM',option:'14 lb',qty:1,note:''}]},
+  {id:410, customer:'Marcus Cole · mcole@stevens.edu', status:'submitted', timestamp:'2026-09-05 22:48', note:'Same drill as last time', items:[{sku:'BBMVXD',option:'16 lb',qty:1,note:''},{sku:'AC991',option:'',qty:1,note:''}]},
+  {id:408, customer:'Dana Whitfield · dwhitfi@stevens.edu', status:'submitted', timestamp:'2026-09-04 21:07', note:'', items:[{sku:'BBMVZP',option:'15 lb',qty:1,note:''}]},
+  {id:396, customer:'Nate Ellis · nellis@stevens.edu', status:'ordered', timestamp:'2026-08-28 12:15', note:'', items:[{sku:'SHST275',option:'L',qty:1,note:''},{sku:'AC574RD',option:'',qty:1,note:''},{sku:'REACTA_CLEAN',option:'',qty:2,note:'one for the bag'}]},
+];
+const USERS = [
+  {name:'Nate Ellis', email:'nellis@stevens.edu', balance:120, hasPassword:true},
+  {name:'Priya Raman', email:'praman@stevens.edu', balance:0, hasPassword:true},
+  {name:'Marcus Cole', email:'mcole@stevens.edu', balance:257, hasPassword:true},
+  {name:'Dana Whitfield', email:'dwhitfi@stevens.edu', balance:42.9, hasPassword:false},
+  {name:'Sam Okafor', email:'sokafor@stevens.edu', balance:0, hasPassword:false},
+];
+const IMPORT_MODES = ['Add new products only','Refresh prices, stock and details (keeps hidden products hidden)','Replace the whole catalog'];
+const PER_PAGE = 24;
+
+class Component extends DCLogic {
+  state = {
+    signedIn: false, authTab: 'login', page: 'catalog',
+    theme: 'light',
+    search: '', mainCat: 'All', subCat: 'All', pageNum: 1,
+    popSku: null, popState: {},
+    detailSku: null, detailOpt: '', detailQty: 1, detailNote: '',
+    cart: [
+      {sku:'BBMVXY', option:'15 lb', qty:1, note:''},
+      {sku:'AC901OBBLUE', option:'', qty:2, note:''},
+    ],
+    checkoutNote: '',
+    expanded: {412:true},
+    ownerStatuses: STATUSES.slice(), bulkStatus: 'approved', statusSel: {},
+    balances: {},
+    savedCard: 'Venmo @nate-ellis',
+    cmTab: 'products', cmSearch: '', cmCategory: 'All', cmStock: 'All',
+    cmEdits: {}, cmEditCount: 0,
+    importMode: IMPORT_MODES[1], priceDiffOpen: false, deleteSel: [],
+    toast: '', toastShown: false,
+  };
+
+  componentDidMount() {
+    let t = 'light';
+    try { t = localStorage.getItem('sb-theme') || 'light'; } catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+    this.setState({theme: t});
+  }
+
+  flash(msg) {
+    this.setState({toast: msg, toastShown: true});
+    clearTimeout(this._t);
+    this._t = setTimeout(() => this.setState({toastShown: false}), 2400);
+  }
+
+  go(page) { this.setState({page, popSku: null}); window.scrollTo(0, 0); }
+
+  filtered() {
+    const {search, mainCat, subCat} = this.state;
+    const needle = search.trim().toLowerCase();
+    return PRODUCTS.filter(p =>
+      (mainCat === 'All' || p.main === mainCat) &&
+      (subCat === 'All' || p.sub === subCat) &&
+      (!needle || p.name.toLowerCase().includes(needle) || p.sku.toLowerCase().includes(needle)));
+  }
+
+  cartLine(c) {
+    const p = find(c.sku) || {};
+    return {p, total: (p.price || 0) * c.qty};
+  }
+  cartTotals() {
+    const lines = this.state.cart.map(c => this.cartLine(c));
+    return {
+      units: this.state.cart.reduce((n, c) => n + Number(c.qty || 1), 0),
+      total: lines.reduce((n, l) => n + l.total, 0),
+      count: this.state.cart.length,
+    };
+  }
+
+  addItem(sku, option, qty, note) {
+    const cart = this.state.cart.concat([{sku, option, qty: Number(qty) || 1, note: note || ''}]);
+    this.setState({cart, popSku: null});
+    this.flash('Added ' + (find(sku) || {}).name + ' to cart.');
+  }
+
+  pill(status) {
+    const [c, bg, br] = PILL[status] || PILL.submitted;
+    return 'display:inline-block;padding:3px 10px;border-radius:999px;font:700 10px/1.5 \'Source Sans 3\',sans-serif;letter-spacing:0.07em;text-transform:uppercase;color:' + c + ';background:' + bg + ';border:1px solid ' + br;
+  }
+
+  orderView(o, extra) {
+    const items = o.items.map(it => {
+      const p = find(it.sku) || {name: it.sku, price: 0};
+      return {name: p.name, sku: it.sku, option: it.option || '—', qty: it.qty,
+        unit: money(p.price), total: money(p.price * it.qty)};
+    });
+    const units = o.items.reduce((n, it) => n + it.qty, 0);
+    const total = o.items.reduce((n, it) => n + (find(it.sku) || {price:0}).price * it.qty, 0);
+    const expanded = !!this.state.expanded[o.id];
+    return Object.assign({
+      id: o.id, status: o.status, pillStyle: this.pill(o.status),
+      totalLabel: money(total), total,
+      metaLine: o.timestamp + '  ·  ' + units + ' item' + (units === 1 ? '' : 's'),
+      note: o.note, hasNote: !!o.note, items, expanded,
+      toggleLabel: expanded ? 'Hide ' + items.length + ' line' + (items.length === 1 ? '' : 's')
+        : 'Show ' + items.length + ' line' + (items.length === 1 ? '' : 's'),
+      toggle: () => this.setState(s => ({expanded: Object.assign({}, s.expanded, {[o.id]: !s.expanded[o.id]})})),
+    }, extra || {});
+  }
+
+  tabStyle(active, grow) {
+    return (grow ? 'flex:1;' : 'flex:none;') + 'padding:10px 14px;border:0;border-radius:7px;cursor:pointer;white-space:nowrap;font:700 13px/1 \'Source Sans 3\',sans-serif;'
+      + (active ? 'background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.10);'
+                : 'background:transparent;color:var(--dim);');
+  }
+
+  renderVals() {
+    const s = this.state;
+    const t = this.cartTotals();
+    const filtered = this.filtered();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+    const pageNum = Math.max(1, Math.min(s.pageNum, totalPages));
+    const start = (pageNum - 1) * PER_PAGE;
+    const slice = filtered.slice(start, start + PER_PAGE);
+
+    const navDefs = [
+      ['catalog','Catalog'], ['cart','Cart'], ['checkout','Checkout'],
+      ['outstanding','Outstanding'], ['history','History'],
+      ['owner','Owner'], ['manager','Catalog Manager'],
+    ];
+    const navItems = navDefs.map(([key, label]) => ({
+      label, go: () => this.go(key),
+      style: 'padding:8px 12px;border:0;border-radius:8px;background:transparent;cursor:pointer;white-space:nowrap;font:600 14px/1 \'Source Sans 3\',sans-serif;'
+        + (s.page === key || (key === 'catalog' && s.page === 'product')
+            ? 'color:var(--text);background:var(--bg2);' : 'color:var(--dim);'),
+    }));
+
+    const quickDefs = ['All','Bowling Balls','Bowling Bags','Shoes','Apparel'];
+    const quickCats = quickDefs.map(label => ({
+      label, go: () => this.setState({subCat: label, pageNum: 1}),
+      style: 'padding:8px 14px;border-radius:999px;cursor:pointer;white-space:nowrap;font:600 13px/1 \'Source Sans 3\',sans-serif;'
+        + (s.subCat === label ? 'background:var(--primary);color:#fff;border:1px solid var(--primary);'
+                              : 'background:var(--card);color:var(--dim);border:1px solid var(--border);'),
+    }));
+
+    const pageProducts = slice.map(p => {
+      const cfg = optionConfig(p.type);
+      const ps = s.popState[p.sku] || {option: defaultOption(p.type), qty: 1, note: ''};
+      const setPop = patch => this.setState(st => ({popState: Object.assign({}, st.popState,
+        {[p.sku]: Object.assign({}, ps, patch)})}));
+      const scentLine = p.scent && p.scent.toLowerCase() !== 'none' ? '  ·  ' + p.scent : '';
+      return {
+        name: p.name, sku: p.sku, img: p.img, url: p.url, priceLabel: money(p.price),
+        isBall: p.type === 'bowling_ball',
+        popMeta: money(p.price) + scentLine,
+        hasOptions: cfg.options.length > 0, optionType: cfg.optionType, options: cfg.options,
+        optionValue: ps.option, qty: ps.qty, note: ps.note,
+        popOpen: s.popSku === p.sku,
+        togglePop: () => this.setState(st => ({popSku: st.popSku === p.sku ? null : p.sku})),
+        setOption: e => setPop({option: e.target.value}),
+        setQty: e => setPop({qty: Math.max(1, Math.min(20, Number(e.target.value) || 1))}),
+        setNote: e => setPop({note: e.target.value}),
+        add: () => this.addItem(p.sku, ps.option, ps.qty, ps.note),
+        open: () => this.setState({page: 'product', detailSku: p.sku, popSku: null,
+          detailOpt: defaultOption(p.type), detailQty: 1, detailNote: ''}, () => window.scrollTo(0, 0)),
+      };
+    });
+
+    const dp = find(s.detailSku) || PRODUCTS[0];
+    const dcfg = optionConfig(dp.type);
+    const detail = {
+      name: dp.name, sku: dp.sku, img: dp.img, hasImg: !!dp.img, url: dp.url, priceLabel: money(dp.price),
+      crumb: dp.main + ' · ' + dp.sub,
+      hasScent: !!(dp.scent && dp.scent.toLowerCase() !== 'none'), scent: dp.scent,
+      stockColor: 'color-mix(in srgb, #48BB78 58%, var(--text))',
+      hasOptions: dcfg.options.length > 0, optionType: dcfg.optionType,
+      optionChips: dcfg.options.map(o => ({
+        label: o, pick: () => this.setState({detailOpt: o}),
+        style: 'padding:10px 16px;border-radius:8px;cursor:pointer;white-space:nowrap;flex:none;font:600 14px/1 \'Source Sans 3\',sans-serif;'
+          + (s.detailOpt === o ? 'background:var(--text);color:var(--bg);border:1px solid var(--text);'
+                               : 'background:var(--bg);color:var(--text);border:1px solid var(--border);'),
+      })),
+      qty: s.detailQty, note: s.detailNote,
+      setQty: e => this.setState({detailQty: Math.max(1, Math.min(20, Number(e.target.value) || 1))}),
+      setNote: e => this.setState({detailNote: e.target.value}),
+      lineLabel: money(dp.price * s.detailQty),
+      add: () => this.addItem(dp.sku, s.detailOpt, s.detailQty, s.detailNote),
+    };
+
+    const cartLines = s.cart.map((c, i) => {
+      const p = find(c.sku) || {name: c.sku, price: 0, img: '', sku: c.sku, type: 'general'};
+      const cfg = optionConfig(p.type);
+      const meta = ['SKU ' + (p.sku || 'N/A')];
+      if (p.type === 'bowling_ball' && p.scent && p.scent.toLowerCase() !== 'none') meta.push('Scent: ' + p.scent);
+      meta.push(money(p.price) + ' each');
+      const patch = v => this.setState(st => {
+        const cart = st.cart.slice();
+        cart[i] = Object.assign({}, cart[i], v);
+        return {cart};
+      });
+      return {
+        name: p.name, sku: p.sku || '—', img: p.img, hasImg: !!p.img, meta: meta.join('  ·  '),
+        qty: c.qty, note: c.note, options: cfg.options, optionType: cfg.optionType,
+        hasOptions: cfg.options.length > 0, optionValue: c.option,
+        optionLabel: cfg.optionType ? cfg.optionType + ': ' + c.option : '—',
+        unitLabel: money(p.price), lineTotal: money(p.price * c.qty),
+        setQty: e => patch({qty: Math.max(1, Math.min(20, Number(e.target.value) || 1))}),
+        setOption: e => patch({option: e.target.value}),
+        setNote: e => patch({note: e.target.value}),
+        remove: () => this.setState(st => ({cart: st.cart.filter((_, j) => j !== i)})),
+      };
+    });
+
+    const allOrders = ORDERS.map(o => this.orderView(o));
+    const outstanding = ORDERS.filter(o => ['submitted','approved','ordered'].includes(o.status)).map(o => this.orderView(o));
+    const fulfilled = ORDERS.filter(o => o.status === 'fulfilled');
+    const outValue = outstanding.reduce((n, o) => n + o.total, 0);
+    const outItems = outstanding.reduce((n, o) => n + o.items.reduce((m, i) => m + i.qty, 0), 0);
+    const histValue = allOrders.filter(o => o.status !== 'cancelled').reduce((n, o) => n + o.total, 0);
+
+    const ownerShown = OWNER_ORDERS.filter(o => s.ownerStatuses.includes(o.status));
+    const ownerOrders = ownerShown.map(o => this.orderView(o, {
+      customer: o.customer,
+      statusSel: s.statusSel[o.id] || o.status,
+      setStatus: e => this.setState(st => ({statusSel: Object.assign({}, st.statusSel, {[o.id]: e.target.value})})),
+      apply: () => this.flash('Order #' + o.id + ' status updated.'),
+      del: () => this.flash('Order #' + o.id + ' deleted.'),
+    }));
+    const statusFilters = STATUSES.map(st2 => ({
+      label: st2, toggle: () => this.setState(st => ({ownerStatuses: st.ownerStatuses.includes(st2)
+        ? st.ownerStatuses.filter(x => x !== st2) : st.ownerStatuses.concat([st2])})),
+      style: 'padding:7px 12px;border-radius:999px;cursor:pointer;font:600 12px/1 \'Source Sans 3\',sans-serif;text-transform:capitalize;'
+        + (s.ownerStatuses.includes(st2) ? 'background:var(--text);color:var(--bg);border:1px solid var(--text);'
+                                         : 'background:transparent;color:var(--dim);border:1px solid var(--border);'),
+    }));
+    const pendingBalls = OWNER_ORDERS.filter(o => ['submitted','approved'].includes(o.status))
+      .reduce((n, o) => n + o.items.filter(i => (find(i.sku) || {}).type === 'bowling_ball').reduce((m, i) => m + i.qty, 0), 0);
+    const groupedBalls = [
+      {name:'Alpha Crux', sku:'BBMVXA', weight:'15 lb', qty:1},
+      {name:'Equinox Solid', sku:'BBMVXD', weight:'16 lb', qty:1},
+      {name:'Ion Max Pearl', sku:'BBMVIM', weight:'14 lb', qty:1},
+      {name:'Phaze II Pearl', sku:'BBMVZP', weight:'15 lb', qty:1},
+    ];
+    const teamUsers = USERS.map(u => ({
+      name: u.name,
+      emailLabel: u.email + (u.hasPassword ? '' : '   ⚠️ no password set'),
+      balance: s.balances[u.email] === undefined ? u.balance : s.balances[u.email],
+      setBalance: e => this.setState(st => ({balances: Object.assign({}, st.balances, {[u.email]: e.target.value})})),
+      save: () => this.flash('Balance updated for ' + u.name + '.'),
+      reset: () => u.hasPassword ? this.flash('Password cleared for ' + u.email + '.') : null,
+      resetStyle: 'padding:8px;border-radius:7px;font:600 12px/1 \'Source Sans 3\',sans-serif;border:1px solid var(--border);background:transparent;'
+        + (u.hasPassword ? 'color:var(--dim);cursor:pointer;' : 'color:var(--dim2);cursor:not-allowed;opacity:0.5;'),
+    }));
+
+    const cmNeedle = s.cmSearch.trim().toLowerCase();
+    const cmFiltered = PRODUCTS.filter(p =>
+      (s.cmCategory === 'All' || p.sub === s.cmCategory) &&
+      (!cmNeedle || p.name.toLowerCase().includes(cmNeedle) || p.sku.toLowerCase().includes(cmNeedle)) &&
+      (s.cmStock === 'All' || (s.cmStock === 'In stock only')));
+    const cmRows = cmFiltered.slice(0, 14).map(p => {
+      const edit = s.cmEdits[p.sku] || {};
+      const bump = patch => this.setState(st => {
+        const cmEdits = Object.assign({}, st.cmEdits, {[p.sku]: Object.assign({}, st.cmEdits[p.sku] || {}, patch)});
+        return {cmEdits, cmEditCount: Object.keys(cmEdits).length};
+      });
+      return {
+        img: p.img, hasImg: !!p.img, name: p.name, sku: p.sku,
+        price: edit.price === undefined ? p.price.toFixed(2) : edit.price,
+        inStock: edit.inStock === undefined ? true : edit.inStock,
+        visible: edit.visible === undefined ? true : edit.visible,
+        main: p.main, sub: p.sub, type: p.type, updated: 'Sep 3, 2026',
+        setPrice: e => bump({price: e.target.value}),
+        setStock: e => bump({inStock: e.target.checked}),
+        setVisible: e => bump({visible: e.target.checked}),
+      };
+    });
+
+    const deleteChips = ['Team warmup shirt (no SKU)','Raffle ball — Phaze II (RAFFLE-01)','Old club polo (CLUB-POLO)'].map(label => ({
+      label, toggle: () => this.setState(st => ({deleteSel: st.deleteSel.includes(label)
+        ? st.deleteSel.filter(x => x !== label) : st.deleteSel.concat([label])})),
+      style: 'padding:8px 13px;border-radius:999px;cursor:pointer;font:600 12px/1 \'Source Sans 3\',sans-serif;'
+        + (s.deleteSel.includes(label) ? 'background:var(--soft);color:var(--ink);border:1px solid rgba(163,38,56,0.4);'
+                                       : 'background:var(--bg2);color:var(--dim);border:1px solid var(--border);'),
+    }));
+
+    const importModes = IMPORT_MODES.map(label => ({
+      label, pick: () => this.setState({importMode: label}),
+      style: 'display:flex;align-items:center;gap:11px;text-align:left;width:100%;padding:13px 16px;border-radius:10px;cursor:pointer;font:600 14px/1.35 \'Source Sans 3\',sans-serif;'
+        + (s.importMode === label ? 'background:var(--soft);color:var(--text);border:1px solid rgba(163,38,56,0.4);'
+                                  : 'background:var(--card);color:var(--dim);border:1px solid var(--border);'),
+      dotStyle: 'width:14px;height:14px;border-radius:50%;flex:none;'
+        + (s.importMode === label ? 'background:var(--primary);box-shadow:inset 0 0 0 3px var(--card);'
+                                  : 'background:transparent;border:1px solid var(--border);'),
+    }));
+
+    const balance = 120;
+    const cmShown = cmFiltered.length;
+
+    return {
+      signedIn: s.signedIn, signedOut: !s.signedIn,
+      isLogin: s.authTab === 'login', isSignup: s.authTab === 'signup', isClaim: s.authTab === 'claim',
+      tabLogin: () => this.setState({authTab: 'login'}),
+      tabSignup: () => this.setState({authTab: 'signup'}),
+      tabClaim: () => this.setState({authTab: 'claim'}),
+      tabLoginStyle: this.tabStyle(s.authTab === 'login', true),
+      tabSignupStyle: this.tabStyle(s.authTab === 'signup', true),
+      tabClaimStyle: this.tabStyle(s.authTab === 'claim', true),
+      doLogin: () => this.setState({signedIn: true, page: 'catalog'}),
+      logout: () => this.setState({signedIn: false, authTab: 'login'}),
+
+      navItems, quickCats,
+      themeIcon: s.theme === 'dark' ? 'Light' : 'Dark',
+      toggleTheme: () => {
+        const next = s.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('sb-theme', next); } catch (e) {}
+        this.setState({theme: next});
+      },
+      hasBalance: balance > 0, balanceLabel: money(balance),
+      cartCountLabel: t.units ? 'Cart · ' + t.units : 'Cart',
+      goCatalog: () => this.go('catalog'), goCart: () => this.go('cart'),
+      goCheckout: () => this.go('checkout'), goProfile: () => this.go('profile'),
+
+      isCatalog: s.page === 'catalog', isProduct: s.page === 'product',
+      isCart: s.page === 'cart', isCheckout: s.page === 'checkout',
+      isOutstanding: s.page === 'outstanding', isHistory: s.page === 'history',
+      isProfile: s.page === 'profile', isOwner: s.page === 'owner', isManager: s.page === 'manager',
+
+      search: s.search, onSearch: e => this.setState({search: e.target.value, pageNum: 1}),
+      mainCat: s.mainCat, subCat: s.subCat,
+      mainOptions: ['All'].concat(Array.from(new Set(PRODUCTS.map(p => p.main))).sort()),
+      subOptions: ['All'].concat(Array.from(new Set(PRODUCTS.map(p => p.sub))).sort()),
+      onMainCat: e => this.setState({mainCat: e.target.value, pageNum: 1}),
+      onSubCat: e => this.setState({subCat: e.target.value, pageNum: 1}),
+      showingLabel: filtered.length
+        ? 'Showing ' + (start + 1) + '-' + Math.min(start + PER_PAGE, filtered.length) + ' of ' + filtered.length + ' products'
+          + (totalPages > 1 ? '  ·  page ' + pageNum + ' of ' + totalPages : '')
+        : '',
+      noMatches: filtered.length === 0, pageProducts,
+      manyPages: totalPages > 1, pageLabel: 'Page ' + pageNum + ' of ' + totalPages,
+      prevPage: () => this.setState({pageNum: Math.max(1, pageNum - 1), popSku: null}),
+      nextPage: () => this.setState({pageNum: Math.min(totalPages, pageNum + 1), popSku: null}),
+      prevStyle: 'padding:10px 18px;border-radius:8px;font:600 14px/1 \'Source Sans 3\',sans-serif;border:1px solid var(--border);background:transparent;'
+        + (pageNum <= 1 ? 'color:var(--dim2);opacity:0.5;cursor:not-allowed;' : 'color:var(--text);cursor:pointer;'),
+      nextStyle: 'padding:10px 18px;border-radius:8px;font:600 14px/1 \'Source Sans 3\',sans-serif;border:1px solid var(--border);background:transparent;'
+        + (pageNum >= totalPages ? 'color:var(--dim2);opacity:0.5;cursor:not-allowed;' : 'color:var(--text);cursor:pointer;'),
+
+      detail,
+      cartLines, cartEmpty: s.cart.length === 0, cartHasItems: s.cart.length > 0,
+      cartUnits: t.units, cartLineCount: t.count, cartTotalLabel: money(t.total),
+      emptyCart: () => { this.setState({cart: []}); this.flash('Cart emptied.'); },
+      checkoutNote: s.checkoutNote, onCheckoutNote: e => this.setState({checkoutNote: e.target.value}),
+      placeOrder: () => { this.setState({cart: [], checkoutNote: '', page: 'outstanding'}); this.flash('Order submitted successfully.'); },
+
+      outstandingOrders: outstanding, hasOutstanding: outstanding.length > 0, noOutstanding: outstanding.length === 0,
+      outCount: outstanding.length, outItems, outValue: money(outValue),
+      allOrders, histCount: allOrders.length,
+      histItems: allOrders.reduce((n, o) => n + o.items.reduce((m, i) => m + i.qty, 0), 0),
+      histValue: money(histValue),
+      downloadCsv: () => this.flash('my_bowling_orders.csv downloaded.'),
+
+      user: {name: 'Nate Ellis', email: 'nellis@stevens.edu', initials: 'NE'},
+      fulfilledCount: fulfilled.length,
+      savedCard: s.savedCard, onSavedCard: e => this.setState({savedCard: e.target.value}),
+      saveCard: () => this.flash('Saved card field updated.'),
+      updatePassword: () => this.flash('Password updated.'),
+
+      pendingBalls, pendingOrders: OWNER_ORDERS.filter(o => ['submitted','approved','ordered'].includes(o.status)).length,
+      groupedBalls, statusFilters, statusOptions: STATUSES,
+      bulkStatus: s.bulkStatus, onBulkStatus: e => this.setState({bulkStatus: e.target.value}),
+      applyBulk: () => this.flash('Updated ' + ownerShown.length + ' orders to ' + s.bulkStatus + '.'),
+      ownerShownLabel: ownerShown.length + ' orders shown',
+      ownerOrders, teamUsers,
+      exportOrders: () => this.flash('orders_export.csv downloaded.'),
+      recheckBatch: () => this.flash('Batch notification logic re-run.'),
+
+      cmIsProducts: s.cmTab === 'products', cmIsImport: s.cmTab === 'import', cmIsAdd: s.cmTab === 'add',
+      cmTabProducts: () => this.setState({cmTab: 'products'}),
+      cmTabImport: () => this.setState({cmTab: 'import'}),
+      cmTabAdd: () => this.setState({cmTab: 'add'}),
+      cmTabProductsStyle: this.tabStyle(s.cmTab === 'products'),
+      cmTabImportStyle: this.tabStyle(s.cmTab === 'import'),
+      cmTabAddStyle: this.tabStyle(s.cmTab === 'add'),
+      cmSearch: s.cmSearch, onCmSearch: e => this.setState({cmSearch: e.target.value}),
+      cmCategory: s.cmCategory, onCmCategory: e => this.setState({cmCategory: e.target.value}),
+      cmStock: s.cmStock, cmStockOptions: ['All','In stock only','Out of stock only'],
+      onCmStock: e => this.setState({cmStock: e.target.value}),
+      cmCountLabel: cmShown + ' of 437 products.',
+      cmRows,
+      cmSave: () => s.cmEditCount ? this.flash('Updated ' + s.cmEditCount + ' product(s).') : null,
+      cmSaveStyle: 'padding:11px 18px;border-radius:8px;border:0;font:700 14px/1 \'Source Sans 3\',sans-serif;'
+        + (s.cmEditCount ? 'background:var(--primary);color:#fff;cursor:pointer;'
+                         : 'background:var(--bg2);color:var(--dim2);cursor:not-allowed;'),
+      cmEditLabel: s.cmEditCount ? s.cmEditCount + ' unsaved change(s).' : 'No unsaved changes.',
+      bulkInLabel: 'Mark all ' + cmShown + ' in stock',
+      bulkOutLabel: 'Mark all ' + cmShown + ' out of stock',
+      bulkIn: () => this.flash(cmShown + ' product(s) marked in stock.'),
+      bulkOut: () => this.flash(cmShown + ' product(s) marked out of stock.'),
+      downloadCatalog: () => this.flash('catalog_export.csv downloaded.'),
+
+      importModes, replaceWarning: s.importMode === IMPORT_MODES[2],
+      priceDiffOpen: s.priceDiffOpen, priceDiffCaret: s.priceDiffOpen ? '▲' : '▼',
+      togglePriceDiff: () => this.setState({priceDiffOpen: !s.priceDiffOpen}),
+      priceChanges: [
+        {name:'Alpha Crux', from:'$115.00', to:'$120.00'},
+        {name:'Phaze II', from:'$114.00', to:'$110.00'},
+        {name:'3G RACER MESH', from:'$135.00', to:'$130.00'},
+      ],
+      applyImport: () => this.flash('Import complete — 6 added, 431 updated, 0 left alone, 0 removed.'),
+      addProduct: () => this.flash('Product added.'),
+      deleteChips,
+      deleteBtnLabel: s.deleteSel.length ? 'Delete ' + s.deleteSel.length + ' product(s)' : 'Delete product(s)',
+      deleteBtnStyle: 'padding:10px 16px;border-radius:8px;font:600 13px/1 \'Source Sans 3\',sans-serif;border:1px solid var(--border);'
+        + (s.deleteSel.length ? 'background:transparent;color:var(--ink);border-color:var(--ink);cursor:pointer;'
+                              : 'background:transparent;color:var(--dim2);cursor:not-allowed;opacity:0.6;'),
+      deleteProducts: () => s.deleteSel.length ? this.flash('Deleted ' + s.deleteSel.length + ' product(s).') : null,
+
+      noop: () => {},
+      toast: s.toast, toastShown: s.toastShown,
+    };
+  }
+}
+</script>
+</body>
+</html>

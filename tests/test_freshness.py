@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(APP); sys.path.insert(0, APP)
 
-from catalog_admin import _humanize_age, STALE_CATALOG_DAYS
+from freshness import humanize_age as _humanize_age, STALE_CATALOG_DAYS
 
 now = datetime.now()
 cases = [
