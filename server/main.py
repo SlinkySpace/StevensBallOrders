@@ -14,6 +14,7 @@ Run it:
     SESSION_SECRET=... uvicorn server.main:app --reload --port 8000
 """
 
+import mimetypes
 import os
 import re
 import sys
@@ -163,9 +164,32 @@ app.add_middleware(
 # root and every product renders without a picture.
 #
 # Serving them here instead means the frontend needs nothing but an API URL.
+# Python's mimetypes table is built from the system's, and the slim image the
+# function runs on does not know .webp - every catalog image went out as
+# application/octet-stream. Browsers sniff an <img> back to an image anyway, so
+# this was invisible, but nothing else that touches the bytes would.
+mimetypes.add_type('image/webp', '.webp')
+mimetypes.add_type('image/avif', '.avif')
+
+
+class _CachedStatic(StaticFiles):
+    """Serve the catalog images as immutable.
+
+    download_images.py names them <id>_<content hash>.webp, so a changed image
+    is a changed URL and one of these can never go stale. The default is
+    max-age=0, must-revalidate, which put a round trip on the wire for every
+    one of the 24 images on a page of the catalog, every load.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers['cache-control'] = 'public, max-age=31536000, immutable'
+        return response
+
+
 _STATIC_DIR = Path(__file__).resolve().parents[1] / 'static'
 if _STATIC_DIR.is_dir():
-    app.mount('/static', StaticFiles(directory=_STATIC_DIR), name='static')
+    app.mount('/static', _CachedStatic(directory=_STATIC_DIR), name='static')
 
 
 def _public(user) -> dict:
@@ -703,6 +727,7 @@ def health():
         'writes_blocked_because': blocked,
         'database_url_set': bool(str(getattr(config, 'DATABASE_URL', '') or '')),
         'session_secret_set': bool(os.environ.get('SESSION_SECRET')),
+        'cookie_secure': os.environ.get('COOKIE_SECURE', '').lower() in {'1', 'true', 'yes'},
         'startup_error': _startup_error,
         'streamlit_installed': runtime.RUNNING_UNDER_STREAMLIT,
     }

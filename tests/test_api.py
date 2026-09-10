@@ -326,6 +326,23 @@ try:
 finally:
     db.count_products = _saved_count
 
+print('\n== catalog images ==')
+# Named <id>_<content hash>.webp by download_images.py, so a changed image is a
+# changed URL - which is what makes immutable safe, and what makes the default
+# must-revalidate a wasted round trip per image per page load.
+_img = next(iter(sorted(Path(APP).glob('static/catalog_images/*.webp'))), None)
+if _img is None:
+    check('there are catalog images to serve', False, 'static/catalog_images is empty')
+else:
+    r = anon.get(f'/static/catalog_images/{_img.name}')
+    check('an image is served', r.status_code == 200, f'got {r.status_code}')
+    check('it is typed as webp, not octet-stream',
+          r.headers.get('content-type') == 'image/webp',
+          str(r.headers.get('content-type')))
+    check('it is cached as immutable',
+          'immutable' in r.headers.get('cache-control', ''),
+          str(r.headers.get('cache-control')))
+
 print('\n== logout ==')
 r = good.post('/api/auth/logout')
 check('logout succeeds', r.status_code == 200)
