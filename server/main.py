@@ -15,6 +15,7 @@ Run it:
 """
 
 import os
+import re
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,6 +41,32 @@ from server import sessions  # noqa: E402
 
 
 ORDER_STATUSES = ('submitted', 'approved', 'ordered', 'fulfilled', 'cancelled')
+
+
+# postgres:// URIs carry the password in the netloc, and psycopg quotes the
+# whole connection string back in several of its errors - a malformed one most
+# of all, because it cannot tell a URI from a keyword/value string and echoes
+# what it was given. /api/health is public and unauthenticated, so anything
+# derived from an exception goes through here first.
+_CREDENTIAL_PATTERNS = (
+    re.compile(r'(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)[^:/@\s"\']+:[^@\s"\']*@'),
+    re.compile(r'(?i)\bpassword\s*=\s*[^\s"\']+'),
+)
+
+
+def _redact(text: str) -> str:
+    """Strip credentials out of an error message before it is returned."""
+    out = str(text)
+    secret = str(getattr(config, 'DATABASE_URL', '') or '')
+    if secret:
+        out = out.replace(secret, '[redacted DATABASE_URL]')
+    out = _CREDENTIAL_PATTERNS[0].sub(lambda m: m.group('scheme') + '[redacted]@', out)
+    out = _CREDENTIAL_PATTERNS[1].sub('password=[redacted]', out)
+    return out
+
+
+def _describe(exc: BaseException) -> str:
+    return _redact(f'{type(exc).__name__}: {exc}')
 
 
 def _write_block_reason() -> Optional[str]:
@@ -105,7 +132,7 @@ async def lifespan(_app: FastAPI):
         try:
             db.init_db()
         except Exception as exc:
-            _startup_error = f'{type(exc).__name__}: {exc}'
+            _startup_error = _describe(exc)
     yield
 
 
@@ -684,5 +711,5 @@ def health():
     except Exception as exc:
         body['ok'] = False
         body['products'] = None
-        body['database_error'] = f'{type(exc).__name__}: {exc}'
+        body['database_error'] = _describe(exc)
     return body

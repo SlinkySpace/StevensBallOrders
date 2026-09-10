@@ -309,6 +309,23 @@ try:
 finally:
     db.count_products = _saved_count
 
+def _leak():
+    raise RuntimeError(
+        'invalid connection option "postgresql://neondb_owner:hunter2@'
+        'ep-example.us-east-1.aws.neon.tech/neondb?sslmode=require"')
+
+
+db.count_products = _leak
+try:
+    leaked = fresh_client().get('/api/health').json()
+    detail = str(leaked.get('database_error', ''))
+    check('health never echoes a database password',
+          'hunter2' not in detail, detail)
+    check('it still says which error it was',
+          'invalid connection option' in detail, detail)
+finally:
+    db.count_products = _saved_count
+
 print('\n== logout ==')
 r = good.post('/api/auth/logout')
 check('logout succeeds', r.status_code == 200)
