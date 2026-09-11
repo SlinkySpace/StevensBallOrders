@@ -98,7 +98,7 @@ export default function SignInPage() {
             fontSize: 17, lineHeight: 1.55, color: 'var(--dim)',
             margin: '0 0 28px', maxWidth: '44ch',
           }}>
-            Pick out what you want, and the captains put it all in as one order.
+            Pick out what you want, and the Eboard will put it all in as one order.
             Sign in with your Stevens email.
           </p>
         </div>
@@ -131,7 +131,7 @@ export default function SignInPage() {
           </h2>
           <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--dim)', margin: '0 0 24px' }}>
             {tab === 'login' ? 'Email and password, same as always.'
-              : tab === 'signup' ? "Ask a captain for the team access code - you'll need it below."
+              : tab === 'signup' ? "Ask Eboard for the team access code - you'll need it below."
               : 'Your account is older than the password screen. Pick one here and everything you have already ordered stays put.'}
           </p>
 
