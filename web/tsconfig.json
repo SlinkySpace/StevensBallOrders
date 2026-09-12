@@ -35,6 +35,7 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
+    "**/*.test.ts",
     "node_modules",
     "scripts"
   ]

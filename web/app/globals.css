@@ -236,3 +236,12 @@ select { appearance: none; -webkit-appearance: none; }
   .rows__head > div:nth-child(3), .rows__row > div:nth-child(3),
   .rows__head > div:nth-child(5), .rows__row > div:nth-child(5) { display: none; }
 }
+
+/* Search plus three selects. Below this they are too narrow to read, so they
+   go two-up and then single file. */
+@media (max-width: 1000px) {
+  .filters { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 560px) {
+  .filters { grid-template-columns: 1fr !important; }
+}

@@ -5,6 +5,7 @@ import { Chrome } from '@/components/Chrome'
 import { useApp } from '@/app/providers'
 import { api, type Freshness, type Product } from '@/lib/api'
 import { currency, defaultOption, imageSrc, productMeta } from '@/lib/format'
+import { SORTS, sortProducts, type Sort } from '@/lib/sort'
 
 const PER_PAGE = 24
 
@@ -31,6 +32,7 @@ function Catalog() {
   const [search, setSearch] = useState('')
   const [main, setMain] = useState('')
   const [sub, setSub] = useState('')
+  const [sort, setSort] = useState<Sort>('default')
   const [page, setPage] = useState(1)
   const [openFor, setOpenFor] = useState<string | null>(null)
 
@@ -64,12 +66,16 @@ function Catalog() {
     })
   }, [products, search, main, sub])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE))
+  const ordered = useMemo(() => sortProducts(filtered, sort), [filtered, sort])
+
+  const totalPages = Math.max(1, Math.ceil(ordered.length / PER_PAGE))
   const current = Math.min(page, totalPages)
   const start = (current - 1) * PER_PAGE
-  const shown = filtered.slice(start, start + PER_PAGE)
+  const shown = ordered.slice(start, start + PER_PAGE)
 
-  useEffect(() => { setPage(1) }, [search, main, sub])
+  // Re-sorting changes what page 1 holds, so go back to it rather than leaving
+  // the reader on page 7 of a list they have just reordered.
+  useEffect(() => { setPage(1) }, [search, main, sub, sort])
 
   return (
     <main style={{ maxWidth: 1320, margin: '0 auto', padding: '36px 28px 80px' }}>
@@ -116,22 +122,27 @@ function Catalog() {
         </div>
       </div>
 
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr)',
+      <div className="filters" style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 2fr) repeat(3, minmax(0, 1fr))',
         gap: 12, marginBottom: 14,
       }}>
         <input className="field" value={search} onChange={(e) => setSearch(e.target.value)}
-               placeholder="Search by product name or SKU" />
-        <Select value={main} onChange={setMain} options={mains} allLabel="All categories" />
-        <Select value={sub} onChange={setSub} options={subs} allLabel="All sub-categories" />
+               placeholder="Search by product name or SKU" aria-label="Search products" />
+        <Select value={main} onChange={setMain} options={mains} allLabel="All categories"
+                label="Main category" />
+        <Select value={sub} onChange={setSub} options={subs} allLabel="All sub-categories"
+                label="Sub-category" />
+        <Select value={sort} onChange={(next) => setSort(next as Sort)}
+                options={SORTS} label="Sort by" />
       </div>
 
       <div style={{ fontSize: 13, color: 'var(--dim2)', marginBottom: 20 }}>
         {loading ? 'Loading the catalog…'
-          : `Showing ${filtered.length ? start + 1 : 0}–${Math.min(start + PER_PAGE, filtered.length)} of ${filtered.length} products${totalPages > 1 ? ` · page ${current} of ${totalPages}` : ''}`}
+          : `Showing ${ordered.length ? start + 1 : 0}–${Math.min(start + PER_PAGE, ordered.length)} of ${ordered.length} products${totalPages > 1 ? ` · page ${current} of ${totalPages}` : ''}`}
       </div>
 
-      {!loading && filtered.length === 0 && (
+      {!loading && ordered.length === 0 && (
         <div className="empty">
           <div className="empty__icon">🎳</div>
           <div className="empty__title">Nothing matches that.</div>
@@ -183,15 +194,30 @@ function Catalog() {
   )
 }
 
-function Select({ value, onChange, options, allLabel }: {
-  value: string; onChange: (next: string) => void; options: string[]; allLabel: string
+/**
+ * Takes either plain strings (the category filters, where the value is the
+ * label) or value/label pairs (sorting, where "price" shows as
+ * "Price · low to high"). `allLabel` adds the empty "all" choice that a filter
+ * needs and a sort does not.
+ */
+function Select({ value, onChange, options, allLabel, label }: {
+  value: string
+  onChange: (next: string) => void
+  options: readonly (string | { value: string; label: string })[]
+  allLabel?: string
+  label: string
 }) {
   return (
     <div style={{ position: 'relative' }}>
-      <select className="field" value={value} onChange={(e) => onChange(e.target.value)}
+      <select className="field" value={value} aria-label={label}
+              onChange={(e) => onChange(e.target.value)}
               style={{ paddingRight: 32, cursor: 'pointer', background: 'var(--card)' }}>
-        <option value="">{allLabel}</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        {allLabel && <option value="">{allLabel}</option>}
+        {options.map((option) => {
+          const optionValue = typeof option === 'string' ? option : option.value
+          const optionLabel = typeof option === 'string' ? option : option.label
+          return <option key={optionValue} value={optionValue}>{optionLabel}</option>
+        })}
       </select>
       <span style={{
         position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)',
