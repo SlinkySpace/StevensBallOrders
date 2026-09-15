@@ -17,7 +17,7 @@ import runtime
 
 from config import CATALOG_CSV
 from db import count_products, get_products, record_catalog_import, upsert_products
-from catalog_rows import (  # noqa: F401 - re-exported for existing callers
+from catalog_rows import (
     APPAREL_SIZES,
     BALL_WEIGHTS,
     HOLDING_PAGE_NAMES,
@@ -32,6 +32,44 @@ from catalog_rows import (  # noqa: F401 - re-exported for existing callers
     rows_from_records,
     sku_from_product_url,
 )
+
+# The re-exports above are what app.py, sync_catalog.py and the tests have
+# always imported from this module, so they have to keep working - but nothing
+# in this file uses them, and pyflakes reports every one as an unused import.
+#
+# It has to be __all__ rather than a comment: pyflakes has no suppression
+# mechanism at all, and ignores "# noqa", which is a flake8 directive. The noqa
+# that used to sit on that import silently did nothing, and the refresh
+# workflow lints before it scrapes - so the catalog refresh failed at its first
+# step with eleven "imported but unused" lines and never reached the scraper.
+#
+# Listing them here says the same thing the comment meant, in a way the linter
+# reads: this module's public surface, re-exports included.
+__all__ = [
+    # Re-exported from catalog_rows, which has no pandas so the API can use it.
+    'APPAREL_SIZES',
+    'BALL_WEIGHTS',
+    'HOLDING_PAGE_NAMES',
+    'REQUIRED_CSV_COLUMNS',
+    'SLUG_CATEGORY_HINTS',
+    'categories_from_url',
+    'classify_product_type',
+    'get_option_config',
+    'is_holding_page_name',
+    'missing_csv_columns',
+    'parse_price',
+    'rows_from_records',
+    'sku_from_product_url',
+    # This module's own.
+    'CATALOG_DISPLAY_COLUMNS',
+    'bootstrap_catalog_from_csv',
+    'filter_catalog',
+    'get_filter_options',
+    'import_catalog_csv',
+    'invalidate_catalog_cache',
+    'load_catalog',
+    'rows_from_catalog_csv',
+]
 
 CATALOG_DISPLAY_COLUMNS = [
     'product_url', 'sku', 'name', 'price', 'in_stock', 'is_visible',

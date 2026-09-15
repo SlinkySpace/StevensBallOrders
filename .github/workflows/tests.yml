@@ -54,7 +54,7 @@ jobs:
       # through and only surfaced after a login and a browser install had
       # already run.
       - name: Check for undefined names
-        run: python -m pyflakes *.py tests/*.py tests/manual/*.py
+        run: python -m pyflakes *.py server/*.py api/*.py tests/*.py tests/manual/*.py
 
       # Every test builds its state in a throwaway SQLite file with
       # DATABASE_URL blanked, so no secrets are needed and nothing here can
