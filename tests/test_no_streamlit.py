@@ -160,12 +160,27 @@ except RuntimeError:
 
 print('\n== the write API imports and answers ==')
 try:
-    from fastapi.testclient import TestClient
+    from fastapi import FastAPI
     from server.main import app
-    client = TestClient(app)
-    r = client.get('/api/auth/me')
-    check('GET /api/auth/me works with no Streamlit installed',
-          r.status_code == 200 and r.json()['user'] is None, f'{r.status_code} {r.text[:120]}')
+
+    # The claim here is that the API imports and builds with Streamlit absent,
+    # which these two settle without needing to make a request.
+    check('server.main imports with no Streamlit installed', isinstance(app, FastAPI))
+    check('and it has its routes', len(app.routes) > 5, str(len(app.routes)))
+
+    # Answering a real request is the stronger check, so make it whenever the
+    # test client can be built. starlette raises RuntimeError rather than
+    # ImportError when its HTTP client is missing, and httpx2 is a test-only
+    # dependency - a reason to skip this one assertion, not to fail the file.
+    try:
+        from fastapi.testclient import TestClient
+    except (ImportError, RuntimeError) as exc:
+        print(f'SKIP  the live request needs httpx2: {str(exc).splitlines()[0]}')
+    else:
+        response = TestClient(app).get('/api/auth/me')
+        check('GET /api/auth/me answers',
+              response.status_code == 200 and response.json()['user'] is None,
+              f'{response.status_code} {response.text[:120]}')
 except ImportError as exc:
     check('fastapi is installed', False, repr(exc))
 except Exception as exc:

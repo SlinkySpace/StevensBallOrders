@@ -48,7 +48,17 @@ def check(label, cond, extra=''):
 try:
     from fastapi.testclient import TestClient
 except ImportError:
-    print('SKIP  fastapi is not installed; run: pip install -r api/requirements.txt')
+    print('SKIP  fastapi is not installed; run: pip install -r requirements.txt')
+    print('\n0/0 passed (skipped)')
+    sys.exit(0)
+except RuntimeError as exc:
+    # starlette raises this rather than ImportError when its HTTP client is
+    # missing: "The starlette.testclient module requires the httpx2 package".
+    # That is a test-only dependency, so an environment without it should say
+    # so and step aside rather than fail the whole suite - which is what it did
+    # in CI, taking the catalog refresh down with it. CI installs httpx2 now,
+    # so these tests do still run there.
+    print(f'SKIP  TestClient is unavailable: {str(exc).splitlines()[0]}')
     print('\n0/0 passed (skipped)')
     sys.exit(0)
 

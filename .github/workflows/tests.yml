@@ -48,7 +48,12 @@ jobs:
           # Not in requirements.txt on purpose: only optimize_images.py needs
           # Pillow, and requirements.txt is what Streamlit Community Cloud
           # installs to run the app, which does not.
-          pip install pyflakes Pillow
+          # httpx2 is what starlette.testclient needs to construct a
+          # TestClient. Recent starlette raises RuntimeError without it rather
+          # than ImportError, so it slips past the "fastapi not installed" skip
+          # in tests/test_api.py and fails the run outright. It is test-only,
+          # which is why it is here and not in requirements.txt.
+          pip install pyflakes Pillow httpx2
 
       # Catches what py_compile cannot. A missing `urlparse` import once got
       # through and only surfaced after a login and a browser install had
