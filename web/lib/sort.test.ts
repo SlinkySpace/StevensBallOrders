@@ -42,11 +42,14 @@ const rows: Product[] = [
   product({ name: 'No Sku Item', sku: '', price: 30 }),
 ]
 
-console.log('== the four options exist ==')
-check('exactly four', SORTS.length === 4, String(SORTS.length))
-check('they are default, price, name, sku',
-  SORTS.map((s) => s.value).join(',') === 'default,price,name,sku',
+console.log('== the five options exist ==')
+check('exactly five', SORTS.length === 5, String(SORTS.length))
+check('they are default, both price directions, name, sku',
+  SORTS.map((s) => s.value).join(',') === 'default,price-asc,price-desc,name,sku',
   SORTS.map((s) => s.value).join(','))
+check('the two price options sit next to each other',
+  SORTS.findIndex((s) => s.value === 'price-desc')
+    === SORTS.findIndex((s) => s.value === 'price-asc') + 1)
 
 console.log('\n== default is left alone ==')
 const untouched = sortProducts(rows, 'default')
@@ -54,13 +57,30 @@ check('same order', untouched.map((r) => r.sku).join() === rows.map((r) => r.sku
 check('same array identity (no needless copy)', untouched === rows)
 
 console.log('\n== price, low to high ==')
-const byPrice = sortProducts(rows, 'price')
+const byPrice = sortProducts(rows, 'price-asc')
 const priced = byPrice.filter((r) => r.price > 0).map((r) => r.price)
 check('ascending', priced.every((value, i) => i === 0 || priced[i - 1] <= value), priced.join(' '))
 check('zero-price products land last',
   byPrice.slice(-2).every((r) => r.price === 0),
   byPrice.map((r) => `${r.sku}:${r.price}`).join(' '))
 check('the cheapest real price is first', byPrice[0].price === 12, String(byPrice[0].price))
+
+console.log('\n== price, high to low ==')
+const byPriceDesc = sortProducts(rows, 'price-desc')
+const pricedDesc = byPriceDesc.filter((r) => r.price > 0).map((r) => r.price)
+check('descending',
+  pricedDesc.every((value, i) => i === 0 || pricedDesc[i - 1] >= value), pricedDesc.join(' '))
+check('the dearest real price is first', byPriceDesc[0].price === 189.99, String(byPriceDesc[0].price))
+
+// The reason this direction is not just a reversed array. A product reads
+// $0.00 when the scrape found no price, and negating the whole comparison
+// would open "most expensive first" on the rows whose price is missing.
+check('zero-price products STILL land last, not first',
+  byPriceDesc.slice(-2).every((r) => r.price === 0),
+  byPriceDesc.map((r) => `${r.sku}:${r.price}`).join(' '))
+check('it is not the plain reverse of low to high',
+  byPriceDesc.map((r) => r.sku).join() !== [...byPrice].reverse().map((r) => r.sku).join(),
+  byPriceDesc.map((r) => r.sku).join(' '))
 
 console.log('\n== name, A to Z ==')
 const byName = sortProducts(rows, 'name')
@@ -88,10 +108,16 @@ for (const option of SORTS) sortProducts(rows, option.value)
 check('original order intact after sorting every way', rows.map((r) => r.sku).join() === before)
 
 console.log('\n== ties keep catalog order (stable) ==')
-const tied = sortProducts(rows, 'price').filter((r) => r.price === 12)
+const tied = sortProducts(rows, 'price-asc').filter((r) => r.price === 12)
 check('Pad 10 still precedes Pad 9, as in the input',
   tied[0].name === 'Pad 10' && tied[1].name === 'Pad 9',
   tied.map((r) => r.name).join(' '))
+
+// Reversing the direction reverses the prices, not the rows that share one.
+const tiedDesc = sortProducts(rows, 'price-desc').filter((r) => r.price === 12)
+check('and still precedes it high to low, rather than flipping',
+  tiedDesc[0].name === 'Pad 10' && tiedDesc[1].name === 'Pad 9',
+  tiedDesc.map((r) => r.name).join(' '))
 
 // --- against the real catalog --------------------------------------------
 
@@ -124,12 +150,24 @@ if (existsSync(csv)) {
     realByName.every((row, i) => i === 0 || collator.compare(realByName[i - 1].name, row.name) <= 0))
   check('nothing was lost or duplicated', realByName.length === real.length)
 
-  const realByPrice = sortProducts(real, 'price')
+  const realByPrice = sortProducts(real, 'price-asc')
   const firstZero = realByPrice.findIndex((r) => r.price <= 0)
   check('no priced product appears after a zero-price one',
     firstZero === -1 || realByPrice.slice(firstZero).every((r) => r.price <= 0),
     `first zero at ${firstZero} of ${realByPrice.length}`)
-  console.log(`        (${real.length} products, cheapest "${realByPrice[0].name.slice(0, 34)}")`)
+
+  const realDesc = sortProducts(real, 'price-desc')
+  const realPricedDesc = realDesc.filter((r) => r.price > 0).map((r) => r.price)
+  check('high to low descends across the whole catalog',
+    realPricedDesc.every((value, i) => i === 0 || realPricedDesc[i - 1] >= value))
+  const firstZeroDesc = realDesc.findIndex((r) => r.price <= 0)
+  check('and buries the priceless products there too',
+    firstZeroDesc === -1 || realDesc.slice(firstZeroDesc).every((r) => r.price <= 0),
+    `first zero at ${firstZeroDesc} of ${realDesc.length}`)
+  check('nothing was lost or duplicated either way', realDesc.length === real.length)
+
+  console.log(`        (${real.length} products, cheapest "${realByPrice[0].name.slice(0, 34)}",`)
+  console.log(`         dearest "${realDesc[0].name.slice(0, 34)}")`)
 } else {
   console.log('\n(skipping the real-catalog checks: storm_products_tagged.csv not found)')
 }

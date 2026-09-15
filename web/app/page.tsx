@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Chrome } from '@/components/Chrome'
 import { useApp } from '@/app/providers'
 import { api, type Freshness, type Product } from '@/lib/api'
+import { browseQuery, productHref, readBrowse } from '@/lib/catalog-params'
 import { currency, defaultOption, imageSrc, productMeta } from '@/lib/format'
 import { SORTS, sortProducts, type Sort } from '@/lib/sort'
 
@@ -18,7 +21,23 @@ const QUICK = [
 ]
 
 export default function CatalogPage() {
-  return <Chrome><Catalog /></Chrome>
+  // useSearchParams needs a Suspense boundary above it, or the build fails
+  // prerendering this route.
+  return (
+    <Chrome>
+      <Suspense fallback={<Loading />}>
+        <Catalog />
+      </Suspense>
+    </Chrome>
+  )
+}
+
+function Loading() {
+  return (
+    <main style={{ maxWidth: 1320, margin: '0 auto', padding: '36px 28px 80px' }}>
+      <div style={{ fontSize: 13, color: 'var(--dim2)' }}>Loading the catalog…</div>
+    </main>
+  )
 }
 
 function Catalog() {
@@ -29,11 +48,17 @@ function Catalog() {
   const [fresh, setFresh] = useState<Freshness | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [search, setSearch] = useState('')
-  const [main, setMain] = useState('')
-  const [sub, setSub] = useState('')
-  const [sort, setSort] = useState<Sort>('default')
-  const [page, setPage] = useState(1)
+  const params = useSearchParams()
+
+  // Read once. From here on this state drives the URL, not the other way
+  // round, so that typing in the search box is not fighting a re-parse.
+  const [restored] = useState(() => readBrowse(params))
+
+  const [search, setSearch] = useState(restored.search)
+  const [main, setMain] = useState(restored.main)
+  const [sub, setSub] = useState(restored.sub)
+  const [sort, setSort] = useState<Sort>(restored.sort)
+  const [page, setPage] = useState(restored.page)
   const [openFor, setOpenFor] = useState<string | null>(null)
 
   useEffect(() => {
@@ -75,7 +100,42 @@ function Catalog() {
 
   // Re-sorting changes what page 1 holds, so go back to it rather than leaving
   // the reader on page 7 of a list they have just reordered.
-  useEffect(() => { setPage(1) }, [search, main, sub, sort])
+  //
+  // Keyed on the filters themselves rather than on "is this the first run",
+  // for two reasons. The effect fires on mount like any other, and the page
+  // restored from the URL is not a filter change - resetting it would land the
+  // shopper on page 1 of the list they were half way down, which is most of
+  // what this is meant to fix. And a first-run flag would misfire anyway:
+  // Strict Mode mounts twice in development, so the flag would be spent on the
+  // first pass and reset the page on the second. Comparing the values is
+  // idempotent, so running twice does nothing the second time.
+  const lastFilters = useRef(JSON.stringify([search, main, sub, sort]))
+  useEffect(() => {
+    const key = JSON.stringify([search, main, sub, sort])
+    if (lastFilters.current === key) return
+    lastFilters.current = key
+    setPage(1)
+  }, [search, main, sub, sort])
+
+  // Where the shopper is, as a query string, for the URL and for the product
+  // links to carry. `current` rather than `page` so a page number past the end
+  // of a narrowed list is not what gets restored.
+  const query = useMemo(
+    () => browseQuery({ search, main, sub, sort, page: current }),
+    [search, main, sub, sort, current],
+  )
+
+  // All this needs is for the address bar to match what is on screen, so it
+  // goes through the History API rather than the router. router.replace would
+  // re-request the route on every keystroke, and with the Suspense boundary
+  // above that means risking a flash of the loading fallback while someone is
+  // still typing. replaceState touches nothing but the URL.
+  //
+  // replace, not push, for the same reason: pushing would bury the product
+  // page the shopper came from under one history entry per letter of "storm".
+  useEffect(() => {
+    window.history.replaceState(null, '', query ? `/?${query}` : '/')
+  }, [query])
 
   return (
     <main style={{ maxWidth: 1320, margin: '0 auto', padding: '36px 28px 80px' }}>
@@ -167,6 +227,7 @@ function Catalog() {
           <ProductCard
             key={product.product_url}
             product={product}
+            backTo={query}
             open={openFor === product.product_url}
             onToggle={() => setOpenFor(openFor === product.product_url ? null : product.product_url)}
             onAdd={(line) => {
@@ -227,8 +288,9 @@ function Select({ value, onChange, options, allLabel, label }: {
   )
 }
 
-function ProductCard({ product, open, onToggle, onAdd }: {
+function ProductCard({ product, backTo, open, onToggle, onAdd }: {
   product: Product
+  backTo: string
   open: boolean
   onToggle: () => void
   onAdd: (line: import('@/lib/api').CartLine) => void
@@ -238,14 +300,19 @@ function ProductCard({ product, open, onToggle, onAdd }: {
   const [note, setNote] = useState('')
   const src = imageSrc(product.image_url)
   const isBall = product.product_type === 'bowling_ball'
-  const href = `/product?ref=${encodeURIComponent(product.product_url)}`
+  const href = productHref(product.product_url, backTo)
 
   return (
     <div style={{
       position: 'relative', background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column',
     }}>
-      <a href={href} style={{ position: 'relative', display: 'block' }}>
+      {/*
+        Link, not <a>: a full page load would remount the catalog and re-fetch
+        every product on the way back. prefetch off because a full screen is 24
+        cards, and prefetching 24 product pages to open at most one is waste.
+      */}
+      <Link href={href} prefetch={false} style={{ position: 'relative', display: 'block' }}>
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={src} alt={product.name} loading="lazy" decoding="async" style={{
@@ -269,14 +336,14 @@ function ProductCard({ product, open, onToggle, onAdd }: {
             textTransform: 'uppercase', color: 'var(--dim)',
           }}>Ball</div>
         )}
-      </a>
+      </Link>
 
-      <a href={href} title={product.name} style={{
+      <Link href={href} prefetch={false} title={product.name} style={{
         font: "600 15px/1.3 'Source Sans 3', sans-serif", letterSpacing: '-0.005em',
         margin: '12px 0 8px', height: '2.6em', overflow: 'hidden',
         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
         color: 'var(--text)', textDecoration: 'none',
-      }}>{product.name}</a>
+      }}>{product.name}</Link>
 
       <div style={{
         display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',

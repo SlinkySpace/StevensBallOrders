@@ -10,10 +10,12 @@
  */
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Chrome } from '@/components/Chrome'
 import { useApp } from '@/app/providers'
 import { api, type Product } from '@/lib/api'
+import { backToCatalog } from '@/lib/catalog-params'
 import { currency, defaultOption, imageSrc } from '@/lib/format'
 
 export default function ProductPage() {
@@ -38,6 +40,11 @@ function Detail() {
   const params = useSearchParams()
   const ref = params.get('ref') || ''
   const { addToCart, notify } = useApp()
+
+  // The catalog puts its search, filters, sort and page here on the way in, so
+  // going back lands where the shopper left rather than at the top of page 1.
+  // Empty for a link shared or opened cold, which falls back to a clean "/".
+  const back = useMemo(() => backToCatalog(params.get('back')), [params])
 
   const [products, setProducts] = useState<Product[] | null>(null)
   const [qty, setQty] = useState(1)
@@ -69,9 +76,9 @@ function Detail() {
   if (!product) {
     return (
       <main style={{ maxWidth: 1320, margin: '0 auto', padding: '36px 28px 80px' }}>
-        <a href="/" className="btn-quiet" style={{ display: 'inline-block', marginBottom: 24 }}>
+        <Link href={back} className="btn-quiet" style={{ display: 'inline-block', marginBottom: 24 }}>
           ← Back to catalog
-        </a>
+        </Link>
         <div className="empty">
           <div className="empty__icon">🎳</div>
           <div className="empty__title">That one is not in the catalog right now.</div>
@@ -88,9 +95,9 @@ function Detail() {
 
   return (
     <main style={{ maxWidth: 1320, margin: '0 auto', padding: '28px 28px 80px' }}>
-      <a href="/" className="btn-quiet" style={{ display: 'inline-block', marginBottom: 20 }}>
+      <Link href={back} className="btn-quiet" style={{ display: 'inline-block', marginBottom: 20 }}>
         ← Back to catalog
-      </a>
+      </Link>
 
       <div className="detail" style={{
         display: 'grid', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1fr)',
