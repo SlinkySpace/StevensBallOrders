@@ -114,6 +114,10 @@ export type OrderItem = {
   unit_price: number
   total_price: number
   note: string
+  // Snapshotted with the rest of the line at checkout, and already in the
+  // response - order_items is selected whole and nothing filters it. The CSV
+  // export needs it for the Link column.
+  product_url: string
 }
 
 export type Order = {

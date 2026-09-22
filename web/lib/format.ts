@@ -81,37 +81,10 @@ export function defaultOption(product: Product): string {
   return product.options[0]
 }
 
-export function ordersToCsv(orders: Order[]): string {
-  const header = [
-    'order_id', 'ordered', 'status', 'customer', 'product', 'sku', 'option',
-    'quantity', 'unit_price', 'line_total', 'order_note',
-  ]
-  const rows = [header.join(',')]
-
-  const escape = (value: unknown) => {
-    const text = String(value ?? '')
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-  }
-
-  for (const order of orders) {
-    for (const item of order.items ?? []) {
-      rows.push([
-        order.id,
-        order.timestamp,
-        order.status,
-        `${order.customer_first_name} ${order.customer_last_name}`,
-        item.product_name,
-        item.sku,
-        item.option_value,
-        item.quantity,
-        item.unit_price,
-        item.total_price,
-        order.note,
-      ].map(escape).join(','))
-    }
-  }
-  return rows.join('\n')
-}
+// Grouped by person, in orders-csv.ts so it can be tested without pulling in
+// this module's runtime imports. Re-exported because the owner and history
+// pages have always imported it from here.
+export { ordersToCsv, ORDER_CSV_HEADER } from './orders-csv'
 
 export function catalogToCsv(products: Product[]): string {
   const header = [

@@ -1,4 +1,6 @@
+import csv
 import html
+import io
 from pathlib import Path
 
 import pandas as pd
@@ -1042,26 +1044,80 @@ def _items_dataframe(items):
     return pd.DataFrame(items).reindex(columns=ITEM_TABLE_COLUMNS)
 
 
-def _flat_order_rows(orders):
-    """One row per item, with its order's details alongside - for CSV export."""
-    rows = []
+ORDER_CSV_HEADER = ['Name', 'Item', 'Notes', 'Quantity', 'Link', 'Price', 'Total']
+
+
+def _csv_money(in_cents: int) -> str:
+    """
+    Cents as the sheet holds them: a plain number, no symbol, no trailing zeros
+    - 120, 9.9, 365.38. Excel writes them that way under General formatting.
+    """
+    text = f'{in_cents / 100:.2f}'
+    return text.rstrip('0').rstrip('.') or '0'
+
+
+def _csv_notes(item) -> str:
+    """The weight and whatever the person typed, in the one cell the sheet gives."""
+    parts = [str(item.get('option_value') or '').strip(), str(item.get('note') or '').strip()]
+    return ' - '.join(p for p in parts if p)
+
+
+def _orders_csv(orders) -> str:
+    """
+    Orders as the CSV the Eboard places with Storm: one row per item with the
+    name repeated, a subtotal row closing each person out, and a blank row
+    between people.
+
+    Grouped by person because that is how the gear gets picked, paid for and
+    handed over. Price is the line total rather than the unit price - two pads
+    at 2.89 read as 5.78 - so the column adds up to the subtotal.
+
+    Kept in step with web/lib/orders-csv.ts, which produces the same file for
+    the Next.js app; the two are byte-identical for the same orders.
+    """
+    groups: dict[str, dict] = {}
     for order in orders:
-        for item in order.get('items', []):
-            rows.append({
-                'order_id': order['id'],
-                'ordered': order['timestamp'],
-                'status': order['status'],
-                'product_name': item.get('product_name', ''),
-                'sku': item.get('sku', ''),
-                'option_value': item.get('option_value', ''),
-                'quantity': item.get('quantity', 0),
-                'unit_price': item.get('unit_price', 0),
-                'line_total': item.get('total_price', 0),
-                'item_note': item.get('note', ''),
-                'order_note': order.get('note', ''),
-                'order_total': order.get('total_price', 0),
-            })
-    return rows
+        name = f"{order.get('customer_first_name') or ''} {order.get('customer_last_name') or ''}".strip()
+        # Email is the identity - a team can hold two Matts, and a rename
+        # between orders should not split someone into two blocks.
+        key = str(order.get('customer_email') or '').strip().lower() or name.lower()
+        if not key:
+            continue
+        group = groups.setdefault(key, {'name': name, 'items': []})
+        group['name'] = name or group['name']
+        group['items'].extend(order.get('items', []))
+
+    buffer = io.StringIO()
+    # \n rather than the module default, to match the TypeScript export byte
+    # for byte. Excel reads either.
+    writer = csv.writer(buffer, lineterminator='\n')
+    writer.writerow(ORDER_CSV_HEADER)
+
+    first = True
+    for group in groups.values():
+        if not group['items']:
+            continue
+        if not first:
+            writer.writerow([''] * len(ORDER_CSV_HEADER))
+        first = False
+
+        total = 0
+        for item in group['items']:
+            line = round(float(item.get('total_price') or 0) * 100)
+            total += line
+            writer.writerow([
+                group['name'],
+                item.get('product_name', ''),
+                _csv_notes(item),
+                item.get('quantity', 0),
+                item.get('product_url', ''),
+                _csv_money(line),
+                '',                      # Total belongs to the subtotal row
+            ])
+
+        writer.writerow([group['name'], '', '', '', '', '', _csv_money(total)])
+
+    return buffer.getvalue()
 
 
 def _render_order_list(orders, show_customer: bool = False):
@@ -1149,11 +1205,10 @@ def render_order_history_page():
     ])
     _render_order_list(orders)
 
-    flat = _flat_order_rows(orders)
-    if flat:
+    if any(order.get('items') for order in orders):
         st.download_button(
             'Download my orders (CSV)',
-            data=pd.DataFrame(flat).to_csv(index=False).encode('utf-8'),
+            data=_orders_csv(orders).encode('utf-8'),
             file_name='my_bowling_orders.csv',
             mime='text/csv',
         )
@@ -1306,10 +1361,9 @@ def render_owner_dashboard():
             st.success(f"Password cleared for {user['email']}.")
             st.rerun()
 
-    # Flattened to one row per item, which is what you want when actually
-    # placing the order with Storm.
-    flat = _flat_order_rows(all_filtered_rows)
-    csv_bytes = pd.DataFrame(flat).to_csv(index=False).encode('utf-8') if flat else b''
+    # One row per item, grouped by person with a subtotal each, which is what
+    # you want when actually placing the order with Storm.
+    csv_bytes = _orders_csv(all_filtered_rows).encode('utf-8')
     st.download_button('Export shown orders to CSV', data=csv_bytes,
                        file_name='orders_export.csv', mime='text/csv')
 
